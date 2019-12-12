@@ -1,0 +1,23 @@
+{
+  "name": "umx.js-pfe",
+  "version": "1.0.0",
+  "description": "Audio unmixing on the web",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sigsep/umx.js-pfe.git"
+  },
+  "keywords": [
+    "audio",
+    "ml"
+  ],
+  "author": "Clara Jacintho and Delton  Vaz",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sigsep/umx.js-pfe/issues"
+  },
+  "homepage": "https://github.com/sigsep/umx.js-pfe#readme"
+}
