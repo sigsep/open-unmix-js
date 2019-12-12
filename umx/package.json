@@ -19,5 +19,15 @@
   "bugs": {
     "url": "https://github.com/sigsep/umx.js-pfe/issues"
   },
-  "homepage": "https://github.com/sigsep/umx.js-pfe#readme"
+  "homepage": "https://github.com/sigsep/umx.js-pfe#readme",
+  "devDependencies": {
+    "speaker": "^0.5.0",
+    "wavefile": "^8.4.6"
+  },
+  "dependencies": {
+    "kissfft-js": "^0.1.8",
+    "node-wav": "0.0.2",
+    "stft": "0.0.0",
+    "wav": "^1.0.2"
+  }
 }
