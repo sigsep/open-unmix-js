@@ -60,22 +60,6 @@ def pad_and_partition(tensor, segment_len):
             [[split, segment_len], tf.shape(padded)[1:]],
             axis=0))
 
-def spleeter_inverse_stft(stft, waveform):
-    """ Inverse and reshape the given STFT
-
-    :param stft: input STFT
-    :returns: inverse STFT (waveform)
-    """
-    inversed = inverse_stft(
-        tf.transpose(stft, perm=[2, 0, 1]),
-        FRAME_LEGTH,
-        FRAME_STEP,
-        window_fn=lambda frame_length, dtype: (
-            hann_window(frame_length, periodic=True, dtype=dtype))
-    ) * WINDOW_COMPENSATION_FACTOR
-    reshaped = tf.transpose(inversed)
-    return reshaped[:tf.shape(waveform)[0], :]
-
 def save(path, data, sample_rate,
         codec=None, bitrate=None):
     """ Write waveform data to the file denoted by the given path
