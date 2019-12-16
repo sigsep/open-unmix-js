@@ -12,17 +12,17 @@ export default {
 
   methods: {
     readFile () {
-      let blob = window.URL || window.webkitURL;
+      let blob = window.URL || window.webkitURL
       let file = this.files[0]
-      let fileURL = blob.createObjectURL(file);
-      let ogAudio = document.getElementById('ogAudio') // is... this.. how you do this in Vue? I dont think so 
-      ogAudio.src = fileURL;
+      let fileURL = blob.createObjectURL(file)
+      let ogAudio = document.getElementById('ogAudio') // is... this.. how you do this in Vue? I dont think so
+      ogAudio.src = fileURL
       // do the same thing as Koekestra
       console.log(typeof fileURL)
-      console.log("test")
-      //readFile(file)
+      console.log('test')
+      //  readFile(file)
     }
-}
+  }
 
 }
 // Read file
