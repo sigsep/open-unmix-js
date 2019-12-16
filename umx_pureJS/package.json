@@ -25,8 +25,12 @@
     "wavefile": "^8.4.6"
   },
   "dependencies": {
+    "audio-decode": "^1.4.0",
+    "audio-lena": "^2.1.1",
+    "audiobuffer-to-wav": "^1.0.0",
     "babar": "^0.2.0",
     "kissfft-js": "^0.1.8",
+    "mse": "^0.1.0",
     "node-wav": "0.0.2",
     "stft": "0.0.0",
     "wav": "^1.0.2"
