@@ -99,73 +99,96 @@ def save(path, data, sample_rate,
 """
 The preprocessing pipeline
 """
+
+def loadfile(path):
+    """
+        Loads a music file and outputs a waveform and its sample rate
+
+        :param path: path of the file to load
+        :returns: 32 bit float array (waveform), sample rate 
+    """
+    try:
+        probe = ffmpeg.probe(path)
+    except ffmpeg._run.Error as e:
+        print(e.stderr.decode())
+    if 'streams' not in probe or len(probe['streams']) == 0:
+        print("error")
+        exit()
+    metadata = next(
+            stream
+            for stream in probe['streams']
+            if stream['codec_type'] == 'audio')
+
+    n_channels = metadata['channels']
+
+    # transforming it into the "PCM 32-bit floating-point little-endian" (f32le) file format
+    sample_rate = metadata['sample_rate']
+    output_kwargs = {'format': 'f32le', 'ar': sample_rate}
+    process = (
+        ffmpeg
+        .input(path)
+        .output('pipe:', **output_kwargs)
+        .run_async(pipe_stdout=True, pipe_stderr=True))
+
+    buffer, _ = process.communicate()
+    waveform = np.frombuffer(buffer, dtype='<f4').reshape(-1, n_channels)
+    # TODO: get the processing pipeline for the number of channels
+    return waveform, sample_rate
+
+def waveformSTFT(waveform):
+    """ Applies a short time fourier transform ona given waveform
+
+    :param waveform: 32 bit float array (waveform)
+    :returns: A dictionary of float arrays, stft represents the complex and imaginary values 
+    """
+    features =  {}
+    stft_feature = tf.transpose(
+        stft(tf.transpose(waveform),
+            FRAME_LEGTH,
+            FRAME_STEP,
+            window_fn=lambda frame_length, dtype: (
+                hann_window(frame_length, periodic=True, dtype=dtype)),
+            pad_end=True),
+            perm=[1, 2, 0])
+
+    sess = tf.Session()
+    with sess.as_default(): # using a session to evaluate the tensor results
+        # complex result:
+        features["stft"] = stft_feature.eval()
+
+        # Spectogram (real values, used to calculate the mask?):
+        features["spectrogram"] = tf.abs(
+                    pad_and_partition(stft_feature, T))[:, :, :F, :]
+        
+        return features
+
+def inverseSTFT(stft_feature, waveform):
+    """ Inverses of the stft
+
+    :param stft_feature: the result of an stft
+    :param waveform: the original waveform? i think? i don't know
+    :return: the resulting 32 bit float array 
+    """
+    inversed = inverse_stft(
+            tf.transpose(stft_feature, perm=[2, 0, 1]),
+            FRAME_LEGTH,
+            FRAME_STEP,
+            window_fn=lambda frame_length, dtype: (
+                hann_window(frame_length, periodic=True, dtype=dtype))
+        ) 
+    reshaped = tf.transpose(inversed)
+    output_waveform = reshaped[:tf.shape(waveform)[0], :] # what is this??? what
+    sess = tf.Session()
+    with sess.as_default():
+        data = output_waveform.eval()
+        return data
+
+
 path = os.getcwd() + "/spleeter_python/audio_example.mp3"
-#path = "C:/Users/Clara/Documents/Polytech/IG5_9/pfe/music/Dutra-Contratempo.wav"
-
-# Loading the file 
-try:
-    probe = ffmpeg.probe(path)
-except ffmpeg._run.Error as e:
-    print(e.stderr.decode())
-if 'streams' not in probe or len(probe['streams']) == 0:
-    print("error")
-    exit()
-metadata = next(
-        stream
-        for stream in probe['streams']
-        if stream['codec_type'] == 'audio')
-
-n_channels = metadata['channels']
-
-# transforming it into the "PCM 32-bit floating-point little-endian" (f32le) file format
-sample_rate = metadata['sample_rate']
-output_kwargs = {'format': 'f32le', 'ar': sample_rate}
-process = (
-    ffmpeg
-    .input(path)
-    .output('pipe:', **output_kwargs)
-    .run_async(pipe_stdout=True, pipe_stderr=True))
-
-buffer, _ = process.communicate()
-waveform = np.frombuffer(buffer, dtype='<f4').reshape(-1, n_channels)
-
-# Apply stft to 32  bit float array (waveform)
-features =  {}
-stft_feature = tf.transpose(
-    stft(tf.transpose(waveform),
-        FRAME_LEGTH,
-        FRAME_STEP,
-        window_fn=lambda frame_length, dtype: (
-            hann_window(frame_length, periodic=True, dtype=dtype)),
-        pad_end=True),
-        perm=[1, 2, 0])
-
-# complex result:
-features["mix_stft"] = stft_feature
-
-# Spectogram (real values, used to calculate the mask?):
-features["mix_spectrogram"] = tf.abs(
-            pad_and_partition(stft_feature, T))[:, :, :F, :]
-
-# Now invert it and see if it's the same           
-inversed = inverse_stft(
-        tf.transpose(stft_feature, perm=[2, 0, 1]),
-        FRAME_LEGTH,
-        FRAME_STEP,
-         window_fn=lambda frame_length, dtype: (
-            hann_window(frame_length, periodic=True, dtype=dtype))
-    ) 
-reshaped = tf.transpose(inversed)
-output_waveform = reshaped[:tf.shape(waveform)[0], :] # what is this??? what
-
-# things are tensors at the moment, we have to evaluate to get a numpy array
-sess = tf.Session()
-with sess.as_default():
-    data = output_waveform.eval()
-    codec='wav'
-    bitrate='128k'
-    save_path = os.getcwd() + "/spleeter_python/example_output.wav"
-    # We now use the same audio adapter to save the music back
-    save(save_path, data, sample_rate,codec, bitrate)
-
+waveform, sample_rate = loadfile(path)
+stft_output = waveformSTFT(waveform)
+inv_stft = inverseSTFT(stft_output["stft"], waveform)  
+save_path = os.getcwd() + "/spleeter_python/example_output.wav"
+save(save_path, inv_stft, sample_rate, codec='wav', bitrate='128k')
+print(stft_output)
 print("The end!")

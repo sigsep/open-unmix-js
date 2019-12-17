@@ -80,4 +80,4 @@ function stftPassThru(frame_size, input) {
 }
 
 
-readFile('/Users/delton/pfe/audio_example.mp3')
+readFile('audio_example.mp3')
