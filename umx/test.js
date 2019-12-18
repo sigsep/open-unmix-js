@@ -11,14 +11,11 @@ function stftPassThru(frame_size, input) {
   let called_onfft = 0
  
   function onfft(x, y) {
-    //console.log('x: ' + x, " y: " + y)  
     called_onfft += 1
     istft(x, y)
   }
   
   function onifft(v) {
-    //console.log(Array.prototype.slice.call(v))
-    //console.log('v: ' + v)
     called_istf += 1
     for(var i=0; i<v.length; ++i) {
       output[out_ptr++] = v[i]
@@ -34,30 +31,42 @@ function stftPassThru(frame_size, input) {
 }
 /*-------------------------------------------------------------------------------------------------------------------------------------------------*/
 function inverseSTFT(frame_size, re, im){
+    console.log("input size (re): " + re.length)
+    console.log("input size (im): " + im.length)
+    // try doubling up the array because the output is symetrical? 
+    let d_re = new Float32Array(re.length * 2)
+    let d_im = new Float32Array(re.length * 2)
+    for(let i=0; i < re.length; i++){
+      d_re[i] = re[i]
+      d_re[i+re.length] = re[i]
+    }
+    for(let i=0; i < im.length; i++){
+      d_im[i] = im[i]
+      d_im[i+im.length] = im[i]
+    }
+    
+    // loading the library
     var istft = stftLib(-1, frame_size, onTime)
+
     var output = new Float32Array(re.length)
     var out_ptr = 0
-    let length = 0
+   
+    // counting the times the callback function was called
     let called_time = 0
+
     function onTime(v) {
       called_time++
-      console.log("\nframe " + length++)
       for(var i=0; i<v.length; ++i) {
-        console.log("v: " + v[i])
         output[out_ptr++] = v[i]
       }
     }
     
-    //console.log("\nframe size: " + frame_size)
-    //console.log("\nre: " + re)
-    //console.log("\nim: "+im)  
     console.log("input size (re): " + re.length)
     console.log("input size (im): " + im.length)
-    let hop_size = frame_size >>> 2
-    for(var i=0; i+frame_size<=(re.length); i+=hop_size) {
-      console.log("i: " + i, "n: " + re.length)
-      istft(re.subarray(i, i+frame_size), im.subarray(i, i+frame_size))
-      //console.log("AaaAa")
+    
+    // iterate through the input
+    for(var i=0; i+frame_size<=(d_re.length); i+=frame_size) {
+      istft(d_re.subarray(i, i+frame_size), d_im.subarray(i, i+frame_size))
     }
     
     console.log('called onTime: ' + called_time + " times")
@@ -85,7 +94,6 @@ function STFT(frame_size, input) {
     }   
 
 
-    console.log("input size: " + input.length)
     for(var i=0; i+frame_size<=input.length; i+=frame_size) {
       console.log("i: " + i, "n: " + input.length)
       stft(input.subarray(i, i+frame_size))
@@ -100,25 +108,18 @@ function STFT(frame_size, input) {
 let testarr = new Float32Array([0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 
-let thing = stftPassThru(8, testarr)
-let thing1 = STFT(8, testarr)
-console.log(thing)
+let ogSTFT = stftPassThru(8, testarr)
+let forward = STFT(8, testarr)
+console.log("ogSTFT: "+ogSTFT)
 
-let result = mse(testarr, thing); // results in a calcuation of 5.3125 
-//console.log('data sets are different by ' + result);
-
-
-//console.log('\nstft: '+thing1)
-//console.log("\nre: " + thing1[0])
-//console.log("\nim: " + thing1[1])
-
-let a = [...thing1]
-let thing2 = inverseSTFT(8, a[0], a[1])
-
-//console.log('stft pass through: '+thing)
-
-console.log('\ninverse STFT: ' + thing2)
+let result = mse(testarr, ogSTFT); // results in a calcuation of 5.3125 
+console.log('OGStft ang og data sets are different by ' + result);
 
 
-//let thing4_re = new Float32Array(24)
-//stftLib(1, 24, (data) => {console.log(data)})(new Float32Array([0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+console.log('\nForward stft: '+ forward)
+
+
+let copy_result_stft = [...forward]
+let inverse = inverseSTFT(8, copy_result_stft[0], copy_result_stft[1])
+
+console.log('\nInverse STFT: ' + inverse)
