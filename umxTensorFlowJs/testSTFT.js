@@ -1,30 +1,37 @@
-const tf = require('@tensorflow/tfjs');
+const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
-const decode = require('audio-decode');
 
 const FRAME_LENGTH = 4096 // patch length?
-const FRAME_STEP = 1024
+const FRAME_STEP = 512 //HOP Size ?
 
 function readFile(file) {
-    let arrayBuffer = fs.readFileSync(file);
-    decodeFile(file, arrayBuffer)
-}
+    let arrayBuffer = fs.readFileSync(file).toString('utf-8');
+    let textByLine = arrayBuffer.split(" ");
 
-function decodeFile(fileName, arrayBuffer) {
-    decode(arrayBuffer, (err, audioBuffer) => {
-        try {
-            console.log(audioBuffer.duration)
-            const input = tf.tensor1d(audioBuffer._channelData[0])
+    let floatArray = new Float32Array(textByLine.length - 1) // -1 cuz the last value is NaN
 
-            //TensorflowJs STFT
-            tf.signal.stft(input, FRAME_LENGTH, FRAME_STEP).print();
-
-        } catch (e) {
-            console.log(e)
-            throw e;
-        }
+    let stringToFloatArray = textByLine.map(function(c) {
+        return parseFloat(c).toPrecision(16);
     });
+
+    stringToFloatArray = stringToFloatArray.slice(0, -1); // Remove the last element NaN
+
+    floatArray = stringToFloatArray; //trying to keep precision but it doesnt work :(
+
+    //TODO precision error here, it only keep 6 decimal
+    // Here there's a bug that makes the array loses precision
+    // If remove the 'float32' param tf casts the array as string not being able to perform the STFT
+    const input = tf.tensor1d(floatArray, 'float32')
+
+    input.print(true);
+
+    let result = tf.signal.stft(input, FRAME_LENGTH, FRAME_STEP);
+
+    result.print(true);
+
 }
 
-readFile('audio_example.mp3')
+readFile('channel0');
+
+
 
