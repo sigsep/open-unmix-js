@@ -2,7 +2,7 @@
  * Test file for STFT and ISTFT using @magenta/music
  */
 
-const magenta = require('@magenta/music/node/core');
+// const magenta = require('@magenta/music/node/core');
 const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const mse = require('mse');
@@ -10,50 +10,56 @@ const FFT = require('fft.js');
 const WaveFile = require('wavefile');
 
 const FRAME_LENGTH = 4096
-const FRAME_STEP = 1024
+const HOP_LENGTH = 1024
+const SAMPLE_RATE = 44100
+const NUMBER_OF_CHANNELS = 2
 
 let channel0 = readFile('channel0');
+let channel1 = readFile('channel1');
 
 // inverse spec params:
 const ispecParams = {
-    nFFt: 2048,
-    // winLength: 2048,
-    // hopLength: 512,
-    sampleRate: 44100,
-    // sampleRate: 44100,
-    // center: false,
+    nFFt: 4096,
+    // winLength: 2048, //2048
+    hopLength: HOP_LENGTH,
+    sampleRate: SAMPLE_RATE,
+    center: true,
 };
 
 // stft params
 let stft_params = {
-    // hopLength: FRAME_STEP,
-    sampleRate: 44100,
-    // winLength: FRAME_LENGTH
+    nFft: 4096,
+    // winLength: 2048,
+    hopLength: HOP_LENGTH,
+    sampleRate: SAMPLE_RATE
 }
 
-//Calculate the STFT
-let calcStft = stft(channel0, stft_params);
+//Calculate the STFT for both channels
+let calcStft0 = stft(channel0, stft_params);
+let calcStft1 = stft(channel1, stft_params);
 
-// console.log(calcStft.length, calcStft[0].length)
-
-
-//Calculate the ISTFT
-let calcISTFT = istft(calcStft, ispecParams);
+//Calculate the ISTFT for both channels
+let calcISTFT0 = istft(calcStft0, ispecParams);
+let calcISTFT1 = istft(calcStft1, ispecParams);
 
 
 //Calculate MSE
-let result = mse(calcISTFT, channel0);
-if (result !== 0) {
-    console.log('data sets are different by ' + result);
+let result0 = mse(calcISTFT0, channel0);
+let result1 = mse(calcISTFT1, channel1);
+if (result0 !== 0 || result1 !== 0) {
+    console.log('Channel 0 data sets are different by ' + result0);
+    console.log('Channel 1 data sets are different by ' + result1);
 }
 
+//Resample music
+let audio = new Float32Array(calcISTFT0, calcISTFT1)
 
-//Create WaveFileAgain
-// let wav = new WaveFile();
-// wav.fromScratch(1, 44100, '32f',
-//     calcISTFT);
+// Create WaveFileAgain
+let wav = new WaveFile();
+wav.fromScratch(2, 44100, '32f',
+    audio);
 
-// fs.writeFileSync('tst.wav', wav.toBuffer());
+fs.writeFileSync('tst.wav', wav.toBuffer());
 
 /**
  *
@@ -102,6 +108,7 @@ function padConstant(data, padding) {
 function padCenterToLength(data, length) {
     // If data is longer than length, error!
     if (data.length > length) {
+        console.log(data.length, length)
         throw new Error('Data is longer than length.');
     }
 
@@ -155,6 +162,7 @@ function fft(y) {
 // export function applyWindow(buffer: Float32Array, win: Float32Array) {
 function applyWindow(buffer, win) {
     if(win.length === 1025) win = win.slice(0, -1);
+    if(win.length === 2049) win = win.slice(0, -1);
     if (buffer.length !== win.length) {
         throw new Error(`Buffer length ${buffer.length} != window length ${win.length}.`);
     }
@@ -190,6 +198,9 @@ function stft(y, params) {
 
     let fftWindow = hannWindow(winLength);
 
+    // console.log(fftWindow);
+    // console.log(nFft);
+
     // Pad the window to be the size of nFft.
     fftWindow = padCenterToLength(fftWindow, nFft);
 
@@ -224,6 +235,7 @@ function ifft(reIm) {
     // Interleave.
     var nFFT = reIm.length / 2;
     if(nFFT == 1025) nFFT = 1024
+    if(nFFT == 2049) nFFT = 2048
     const fft = new FFT(nFFT);
     const recon = fft.createComplexArray();
     fft.inverseTransform(recon, reIm);
@@ -263,7 +275,7 @@ function istft(reIm, params) {
     }
 
     // Pad the window to be the size of nFft. Only if nFft != winLength.
-    ifftWindow = padCenterToLength(ifftWindow, nFft);
+    ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
 
     // Pre-allocate the audio output.
     const expectedSignalLen = nFft + hopLength * (nFrames - 1);
@@ -287,7 +299,7 @@ function istft(reIm, params) {
     } else {
         // For gansynth, we did all the padding at the front instead of centering,
         // so remove the padding at the front.
-        sliceStart = 3072//expectedSignalLen - 64000//SAMPLE_LENGTH;  // 3072 //TODO check this
+        sliceStart = expectedSignalLen - 64000; // 3072 // TODO 64000 come from magenta constants
         sliceLength = y.length - sliceStart;
     }
     const yTrimmed = y.slice(sliceStart, sliceLength);
@@ -297,6 +309,7 @@ function istft(reIm, params) {
 //function add(arr0: Float32Array, arr1: Float32Array) {
 function add(arr0, arr1) {
     if(arr1.length == 1025) arr1 = arr1.slice(0, -1);
+    if(arr1.length == 2049) arr1 = arr1.slice(0, -1);
     if (arr0.length !== arr1.length) {
         console.error(
             `Array lengths must be equal to add: ${arr0.length}, ${arr0.length}`);
@@ -308,40 +321,4 @@ function add(arr0, arr1) {
         out[i] = arr0[i] + arr1[i];
     }
     return out;
-}
-
-// function interleaveReIm(real: tf.Tensor, imag: tf.Tensor) {
-function interleaveReIm(real, imag) {
-    const reImInterleave = tf.tidy(() => {
-        // Combine and add back in the zero DC component
-        let reImBatch = tf.concat([real, imag], 0).expandDims(3);
-        reImBatch = tf.pad(reImBatch, [[0, 0], [0, 0], [1, 0], [0, 0]]);
-
-        // Interleave real and imaginary for javascript ISTFT.
-        // Hack to interleave [re0, im0, re1, im1, ...] with batchToSpace.
-        const crops = [[0, 0], [0, 0]];
-        const reImInterleave =
-            tf.batchToSpaceND(reImBatch, [1, 2], crops).reshape([128, 4096]);
-        // Convert Tensor to a Float32Array[]
-        return reImInterleave;
-    });
-    const reImArray = reImInterleave.dataSync();
-    const reIm = [];
-    for (let i = 0; i < 128; i++) {
-        reIm[i] = reImArray.slice(i * 4096, (i + 1) * 4096);
-    }
-    reImInterleave.dispose();
-    return reIm;
-}
-
-// async function reImToAudio(reIm: Float32Array[]) {
-async function reImToAudio(reIm) {
-    const ispecParams = {
-        nFFt: 2048,
-        winLength: 2048,
-        hopLength: 512,
-        sampleRate: 16000,
-        center: false,
-    };
-    return istft(reIm, ispecParams);
 }
