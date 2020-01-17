@@ -10,8 +10,8 @@ const FFT = require('fft.js');
 const wv = require('wavefile');
 const decode = require('audio-decode');
 
-const FRAME_LENGTH = 2048
-const HOP_LENGTH = 512
+const FRAME_LENGTH = 4096
+const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
 const PATCH_LENGTH = 512
 let SAMPLE_LENGTH //64000
@@ -45,7 +45,7 @@ const result1 = preprocessing(channel1)
 
 let output = new Float32Array(result0, result1)
 let wav = new wv.WaveFile();
-wav.fromScratch(2, SAMPLE_RATE, '32f',
+wav.fromScratch(2, 22050, '32f',
     output);
 
 fs.writeFileSync('testKoekestra.wav', wav.toBuffer()); 
@@ -91,11 +91,11 @@ function decodeFile(arrayBuffer) {
             console.log("\nProcessing channel 1\n")
             const result1 = preprocessing(channel1)
 
-            let output = new Float32Array(result0, result1)
+            let output = new Float32Array(channel0, channel1)
 
             let wav = new wv.WaveFile();
-            wav.fromScratch(2, SAMPLE_RATE, '32f',
-                output);
+            wav.fromScratch(2, 22050, '32f',
+                audioBuffer._channelData);
 
             fs.writeFileSync('testWavDecoder.wav', wav.toBuffer());
 
@@ -167,7 +167,7 @@ function padCenterToLength(data, length) {
 // export function applyWindow(buffer: Float32Array, win: Float32Array) {
 function applyWindow(buffer, win) {
     //if(win.length === 1025) win = win.slice(0, -1);
-    if(win.length === 2049) win = win.slice(0, -1);
+    // if(win.length === 2049) win = win.slice(0, -1);
     if (buffer.length !== win.length) {
         throw new Error(`Buffer length ${buffer.length} != window length ${win.length}.`);
     }
@@ -222,7 +222,7 @@ function istft(reIm, params) {
     }
 
     // Pad the window to be the size of nFft. Only if nFft != winLength.
-    //ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
+    ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
 
     // Pre-allocate the audio output.
     const expectedSignalLen = nFft + hopLength * (nFrames - 1);
@@ -259,8 +259,8 @@ function istft(reIm, params) {
 
 //function add(arr0: Float32Array, arr1: Float32Array) {
 function add(arr0, arr1) {
-    if(arr1.length == 1025) arr1 = arr1.slice(0, -1);
-    if(arr1.length == 2049) arr1 = arr1.slice(0, -1);
+    // if(arr1.length == 1025) arr1 = arr1.slice(0, -1);
+    // if(arr1.length == 2049) arr1 = arr1.slice(0, -1);
     if (arr0.length !== arr1.length) {
         console.error(
             `Array lengths must be equal to add: ${arr0.length}, ${arr0.length}`);
@@ -281,26 +281,27 @@ function add(arr0, arr1) {
  * @returns {Float32Array[]}
  */
 function interleaveReIm(real, imag) {
+    console.log(real.shape, imag.shape)
+    const mirrorReal = tf.reverse(real.slice([0, 0], [real.shape[0], FRAME_LENGTH / 2 - 1]), 1);
+    real = tf.concat([real, mirrorReal], 1);
+
+    const mirrorImag = tf.reverse(imag.slice([0, 0], [imag.shape[0], FRAME_LENGTH / 2 - 1]), 1);
+    imag = tf.concat([imag, tf.mul(mirrorImag, -1.0)], 1);
+
     let realArray = real.arraySync();
     let imagArray = imag.arraySync();
 
-    const mirrorReal = tf.reverse(real.slice([0, 0, 0], [1, 128, 1023]), 2);
-    real = tf.concat([real, mirrorReal], 2);
-
-    const mirrorImag = tf.reverse(imag.slice([0, 0, 0], [1, 128, 1023]), 2);
-    imag = tf.concat([imag, tf.mul(mirrorImag, -1.0)], 2);
-
     const resInterleaved = new Array();
 
-    for(let i = 0; i < PATCH_LENGTH; i++){
-        const frame = new Float32Array( (FRAME_LENGTH / 2 + 1) * 2); // TODO: Check if this is correct (should it be -1)
-        if (i < realArray.length - 1) {
+    for(let i = 0; i < realArray.length - 1; i++){
+        const frame = new Float32Array( (FRAME_LENGTH * 2)); // TODO: Check if this is correct (should it be -1)
+        //if (i < realArray.length - 1) {
             for(let j = 0; j < FRAME_LENGTH; j++){
                 frame[j*2+0] = realArray[i][j]; //Real
                 frame[j*2+1] = imagArray[i][j]; //Im
 
             }
-        }
+        //}
         resInterleaved.push(frame)
     }
 
