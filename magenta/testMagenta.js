@@ -2,64 +2,140 @@
  * Test file for STFT and ISTFT using @magenta/music
  */
 
-// const magenta = require('@magenta/music/node/core');
+// const magenta = require('@magenta/music/node');
 const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const mse = require('mse');
 const FFT = require('fft.js');
 const WaveFile = require('wavefile');
+const decode = require('audio-decode');
 
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
 const NUMBER_OF_CHANNELS = 2
+const PATCH_LENGTH = 512
 
 let channel0 = readFile('channel0');
 let channel1 = readFile('channel1');
 
 // inverse spec params:
 const ispecParams = {
-    nFFt: 4096,
-    // winLength: 2048, //2048
+    //nFFt: 4096,
+    winLength: 2048, //2048
     hopLength: HOP_LENGTH,
     sampleRate: SAMPLE_RATE,
     center: true,
 };
 
-// stft params
-let stft_params = {
-    nFft: 4096,
-    // winLength: 2048,
-    hopLength: HOP_LENGTH,
-    sampleRate: SAMPLE_RATE
-}
+let arrayBuffer = fs.readFileSync("audio_example.mp3");
+decodeFile(arrayBuffer);
 
-//Calculate the STFT for both channels
-let calcStft0 = stft(channel0, stft_params);
-let calcStft1 = stft(channel1, stft_params);
-
-//Calculate the ISTFT for both channels
-let calcISTFT0 = istft(calcStft0, ispecParams);
-let calcISTFT1 = istft(calcStft1, ispecParams);
+//Crio o TF 1D
+const input0 = tf.tensor1d(channel0, 'float32') // Here there's a bug that makes the array loses precision
+const input1 = tf.tensor1d(channel1, 'float32') // Here there's a bug that makes the array loses precision
 
 
-//Calculate MSE
-let result0 = mse(calcISTFT0, channel0);
-let result1 = mse(calcISTFT1, channel1);
-if (result0 !== 0 || result1 !== 0) {
-    console.log('Channel 0 data sets are different by ' + result0);
-    console.log('Channel 1 data sets are different by ' + result1);
-}
+// STFT
+let result0 = tf.signal.stft(input0, FRAME_LENGTH, HOP_LENGTH);
+let result1 = tf.signal.stft(input1, FRAME_LENGTH, HOP_LENGTH);
 
-//Resample music
-let audio = new Float32Array(calcISTFT0, calcISTFT1)
+console.log("j")
+result0.print(true)
+return
+
+let real0 = tf.real(result0);
+let real1 = tf.real(result1);
+// console.log("Real:")
+// real.print(true);
+
+let imag0 = tf.imag(result0);
+let imag1 = tf.imag(result1);
+// console.log("Imag:")
+// imag.print(true);
+
+let reIm0 = interleaveReIm(real0, imag0);
+let reIm1 = interleaveReIm(real1, imag1);
+
+//console.log(reIm)
+
+let calcISTFT0 = istft(reIm0, ispecParams);
+let calcISTFT1 = istft(reIm1, ispecParams);
+
+
+let resultMSE0 = mse(calcISTFT0.slice(0, channel0.length-1), channel0);
+let resultMSE1 = mse(calcISTFT1.slice(0, channel1.length-1), channel1);
+console.log('Channel 0 data sets are different by ' + resultMSE0);
+console.log('Channel 1 data sets are different by ' + resultMSE1);
+
+let output = new Float32Array(calcISTFT0, calcISTFT1)
 
 // Create WaveFileAgain
 let wav = new WaveFile();
 wav.fromScratch(2, 44100, '32f',
-    audio);
+    output);
 
-fs.writeFileSync('tst.wav', wav.toBuffer());
+fs.writeFileSync('tst2.wav', wav.toBuffer());
+
+
+/**
+ *
+ * @param arrayBuffer
+ */
+function decodeFile(arrayBuffer) {
+    decode(arrayBuffer, (err, audioBuffer) => {
+        try {
+
+            let channel0 = audioBuffer._channelData[0];
+            let channel1 = audioBuffer._channelData[1];
+
+            //Crio o TF 1D
+            const input0 = tf.tensor1d(channel0, 'float32') // Here there's a bug that makes the array loses precision
+            const input1 = tf.tensor1d(channel1, 'float32') // Here there's a bug that makes the array loses precision
+
+
+            // STFT
+            let result0 = tf.signal.stft(input0, FRAME_LENGTH, HOP_LENGTH);
+            let result1 = tf.signal.stft(input1, FRAME_LENGTH, HOP_LENGTH);
+
+            result0.print(true)
+
+            let real0 = tf.real(result0);
+            let real1 = tf.real(result1);
+
+            let imag0 = tf.imag(result0);
+            let imag1 = tf.imag(result1);
+
+            //Interleaved
+            let reIm0 = interleaveReIm(real0, imag0);
+            let reIm1 = interleaveReIm(real1, imag1);
+
+
+            let calcISTFT0 = istft(reIm0, ispecParams);
+            let calcISTFT1 = istft(reIm1, ispecParams);
+
+
+            let resultMSE0 = mse(calcISTFT0, channel0);
+            let resultMSE1 = mse(calcISTFT1, channel1);
+            console.log('Channel 0 data sets are different by ' + resultMSE0);
+            console.log('Channel 1 data sets are different by ' + resultMSE1);
+
+            let output = new Float32Array(calcISTFT0, calcISTFT1)
+
+            // Create WaveFileAgain
+            let wav = new WaveFile();
+            wav.fromScratch(2, 44100, '32f',
+                output);
+
+            fs.writeFileSync('tst.wav', wav.toBuffer());
+
+        } catch (e) {
+            console.log(e)
+            throw e;
+        }
+    });
+}
+
 
 /**
  *
@@ -198,9 +274,6 @@ function stft(y, params) {
 
     let fftWindow = hannWindow(winLength);
 
-    // console.log(fftWindow);
-    // console.log(nFft);
-
     // Pad the window to be the size of nFft.
     fftWindow = padCenterToLength(fftWindow, nFft);
 
@@ -234,8 +307,15 @@ function stft(y, params) {
 function ifft(reIm) {
     // Interleave.
     var nFFT = reIm.length / 2;
-    if(nFFT == 1025) nFFT = 1024
+    // if(nFFT == 1025) nFFT = 1024
     if(nFFT == 2049) nFFT = 2048
+    // if(nFFT == 465) {
+    //     console.log(reIm.length)
+    //     nFFT = 2048
+    //     let arr = new Float32Array(2048-930)
+    //     let x = [...reIm, ...arr]
+    //     reIm = x
+    // }
     const fft = new FFT(nFFT);
     const recon = fft.createComplexArray();
     fft.inverseTransform(recon, reIm);
@@ -284,6 +364,9 @@ function istft(reIm, params) {
     // Perform inverse ffts.
     for (let i = 0; i < nFrames; i++) {
         const sample = i * hopLength;
+        // if(reIm[i] == 0){
+        //     reIm[i] = new Float32Array(4096);
+        // }
         let yTmp = ifft(reIm[i]);
         yTmp = applyWindow(yTmp, ifftWindow);
         yTmp = add(yTmp, y.slice(sample, sample + nFft));
@@ -321,4 +404,38 @@ function add(arr0, arr1) {
         out[i] = arr0[i] + arr1[i];
     }
     return out;
+}
+
+/**
+ * Interleave real and imaginary tensor values [re0, im0, re1, im1...]
+ * @param real
+ * @param imag
+ * @returns {Float32Array[]}
+ */
+function interleaveReIm(real, imag) {
+    let realArray = real.arraySync();
+    let imagArray = imag.arraySync();
+
+    console.log(realArray.length, realArray[0].length);
+
+    const resInterleaved = new Array();
+
+    for(let i = 0; i < PATCH_LENGTH; i++){
+        const frame = new Float32Array( (FRAME_LENGTH / 2 + 1) * 2);
+        if (i < realArray.length - 1) {
+            for(let j = 0; j < FRAME_LENGTH; j++){
+                frame[j*2+0] = realArray[i][j]; //Real
+                frame[j*2+1] = imagArray[i][j]; //Im
+
+            }
+        }
+        resInterleaved.push(frame)
+    }
+
+    // console.log(resInterleaved, resInterleaved.length, resInterleaved[0].length)
+
+
+    console.log("Results: " + resInterleaved[0].slice(0, 30), resInterleaved.length, resInterleaved[0].length);
+
+    return resInterleaved
 }
