@@ -1,7 +1,7 @@
 /**
  * Test file for STFT and ISTFT using tfjs and magenta/music 
  */
-const tf = require('@tensorflow/tfjs-');
+const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const mse = require('mse');
 const FFT = require('fft.js');
@@ -11,8 +11,10 @@ const decode = require('audio-decode');
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
-const PATCH_LENGTH = 512
 let SAMPLE_LENGTH //64000
+
+const MODEL_2_STEMS = 'https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json'
+let spleeterModel
 
 // ISTT params:
 const ispecParams = {
@@ -29,7 +31,7 @@ const ispecParams = {
 
 
 let arrayBuffer = fs.readFileSync("audio_example.mp3");
-decodeFile(arrayBuffer);
+//decodeFile(arrayBuffer);
 
 let channel0 = readFile('channel0');
 let channel1 = readFile('channel1');
@@ -37,17 +39,18 @@ let channel1 = readFile('channel1');
 SAMPLE_LENGTH = channel0.length
 console.log("\n------------------- Test with KoeKestra's Data ---------------------------\n")
 console.log("\nProcessing channel 0\n")
-const result0 = preprocessing(channel0.slice(4096))
+const result0 = preprocessing(channel0)
 console.log("\nProcessing channel 1\n")
-const result1 = preprocessing(channel1.slice(4096))
+const result1 = preprocessing(channel1)
+
+
+let magTensor = createMagnitudeInputTensor(result0[0], result1[0])
+
+loadModel(magTensor)
+    .catch(err => console.log(err))  
 
 
 let wav = new wv.WaveFile();
-
-wav.fromScratch(2, 22050, '32f',
-    new Float32Array(channel0.slice(4096), channel1.slice(4096)) );
-
-fs.writeFileSync('OG_cut.wav', wav.toBuffer()); 
 
 
 let output = new Float32Array(result0, result1)
@@ -108,9 +111,11 @@ function preprocessing(channel){
 
     let magPhaseArray = magnitudeAndPhaseDecomposition(reImArray)
     console.log("magnitude len:", magPhaseArray[0].length, magPhaseArray[0][0].length, "phase len:", magPhaseArray[1].length,magPhaseArray[1][0].length)
-    
-    let modelResult = loadModel(magPhaseArray[0]).catch(err => console.log(err))  
 
+    return magPhaseArray
+}
+
+function postprocessing(reImArray){
     let resultISTFT = istft(reImArray, ispecParams);
     console.log("Shape after ISTFT: ", resultISTFT.length)
 
@@ -119,6 +124,7 @@ function preprocessing(channel){
 
     return resultISTFT
 }
+
 // From Koekestra
 function magnitudeAndPhaseDecomposition(reImArray){
     const mag   = [];
@@ -139,6 +145,37 @@ function magnitudeAndPhaseDecomposition(reImArray){
     res.push(phase)
     return res
 }
+
+
+function createMagnitudeInputTensor(magArray0, magArray1){
+    const PATCH_LENGTH = magArray0.length
+    const INF_FREQ = FRAME_LENGTH / 4;
+    const PATCH_SIZE = 1 * PATCH_LENGTH * INF_FREQ * 2;
+
+    const x = new Float32Array(PATCH_SIZE); // [time,freq,ch]
+    let inpMagAllZero = true;
+    for (var i = 0; i < INF_FREQ; i++) {
+        for (var j = 0; j < PATCH_LENGTH; j++) {
+            const xi = (j * INF_FREQ + i) * 2;
+            x[xi + 0] = magArray0[j][i];
+            x[xi + 1] = magArray1[j][i];
+            inpMagAllZero &= (x[xi + 0] == 0 && x[xi + 1] == 0);
+        }
+    }
+
+    const shape =  [1, PATCH_LENGTH, INF_FREQ, 2];
+    return tf.tensor(x, shape)
+
+}
+async function loadModel(magTensor) {
+
+    const modelUrl = MODEL_2_STEMS;
+    spleeterModel = await tf.loadGraphModel(modelUrl);
+
+    spleeterModel.predict(magTensor).print()
+    console.log("finish")
+}
+  
   
 
 /**
