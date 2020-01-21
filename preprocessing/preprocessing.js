@@ -1,26 +1,20 @@
 /**
- * Test file for STFT and ISTFT using tfjs and magenta/music 
+ * Test file for STFT and ISTFT using tfjs and magenta/music
  */
-const tf = require('@tensorflow/tfjs-');
+const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const mse = require('mse');
-const FFT = require('fft.js');
 const wv = require('wavefile');
 const decode = require('audio-decode');
 
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
-const PATCH_LENGTH = 512
-let SAMPLE_LENGTH //64000
 
 // ISTT params:
 const ispecParams = {
-    //nFFt: FRAME_LENGTH,
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
-    sampleRate: SAMPLE_RATE,
-    center: true,
 };
 
 // const input = [1, 1, 1, 1, 1]
@@ -34,28 +28,21 @@ decodeFile(arrayBuffer);
 let channel0 = readFile('channel0');
 let channel1 = readFile('channel1');
 
-SAMPLE_LENGTH = channel0.length
 console.log("\n------------------- Test with KoeKestra's Data ---------------------------\n")
 console.log("\nProcessing channel 0\n")
-const result0 = preprocessing(channel0.slice(4096))
+const result0 = preprocessing(channel0)
 console.log("\nProcessing channel 1\n")
-const result1 = preprocessing(channel1.slice(4096))
+const result1 = preprocessing(channel1)
 
 
 let wav = new wv.WaveFile();
-
-wav.fromScratch(2, 22050, '32f',
-    new Float32Array(channel0.slice(4096), channel1.slice(4096)) );
-
-fs.writeFileSync('OG_cut.wav', wav.toBuffer()); 
-
 
 let output = new Float32Array(result0, result1)
 
 wav.fromScratch(2, 22050, '32f',
     output);
 
-fs.writeFileSync('testKoekestra.wav', wav.toBuffer()); 
+fs.writeFileSync('testKoekestra.wav', wav.toBuffer());
 
 
 /**
@@ -68,6 +55,7 @@ function decodeFile(arrayBuffer) {
 
             let channel0 = audioBuffer._channelData[0];
             let channel1 = audioBuffer._channelData[1];
+
             console.log("\n------------------- Test with WavDecoder's Data ---------------------------\n")
             console.log("\nProcessing channel 0\n")
             const result0 = preprocessing(channel0)
@@ -98,20 +86,20 @@ function decodeFile(arrayBuffer) {
  */
 function preprocessing(channel){
     console.log("Shape of input: " + channel.length)
-    
+
     const input = tf.tensor1d(channel, 'float32') // Here there's a bug that makes the array lose precision
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
-    
+
     let reImArray = interleaveReIm(tf.real(resultSTFT), tf.imag(resultSTFT))
-    console.log("Shape after interleave: ", reImArray.length, reImArray[0].length) 
+    console.log("Shape after interleave: ", reImArray.length, reImArray[0].length)
 
     let magPhaseArray = magnitudeAndPhaseDecomposition(reImArray)
     console.log("magnitude len:", magPhaseArray[0].length, magPhaseArray[0][0].length, "phase len:", magPhaseArray[1].length,magPhaseArray[1][0].length)
-    
-    let modelResult = loadModel(magPhaseArray[0]).catch(err => console.log(err))  
 
-    let resultISTFT = istft(reImArray, ispecParams);
+    // let modelResult = loadModel(magPhaseArray[0]).catch(err => console.log(err))
+
+    let resultISTFT = istft(resultSTFT, ispecParams);
     console.log("Shape after ISTFT: ", resultISTFT.length)
 
     let resultMSE = mse(resultISTFT.slice(0, channel.length-1), channel);
@@ -139,7 +127,7 @@ function magnitudeAndPhaseDecomposition(reImArray){
     res.push(phase)
     return res
 }
-  
+
 
 /**
  *
@@ -163,13 +151,7 @@ function readFile(file) {
     return floatArray;
 }
 
-function hannWindow(length) {
-    const win = new Float32Array(length);
-    for (let i = 0; i < length; i++) {
-        win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (length - 1)));
-    }
-    return win;
-}
+
 
 // function padConstant(data: Float32Array, padding: number|number[]) {
 function padConstant(data, padding) {
@@ -211,43 +193,26 @@ function applyWindow(buffer, win) {
     return out;
 }
 
-// export function ifft(reIm: Float32Array): Float32Array {
-function ifft(reIm) {
-    // Interleave.
-    var nFFT = reIm.length / 2;
-    
-    const fft = new FFT(nFFT);
-    const recon = fft.createComplexArray();
-    fft.inverseTransform(recon, reIm);
-    // Just take the real part.
-    const result = fft.fromComplexArray(recon);
-    return result;
-}
-
-//function istft(reIm: Float32Array[], params: InverseSpecParams): Float32Array {
 /**
  *
- * @param reIm
+ * @param complex is the output of STFT
  * @param params Parameters for computing a inverse spectrogram from audio.
  *
-   params {
-    sampleRate: number;
+ params {
     hopLength?: number;
     winLength?: number;
     nFft?: number;
-    center?: boolean;
    }
  * @returns {Float32Array}
  */
-function istft(reIm, params) {
-    const nFrames = reIm.length;
-    const nReIm = reIm[0].length;
-    const nFft = params.nFFT || (nReIm / 2);
+function istft(complex, params) {
+    const nFrames = complex.shape[0];
+    const nFft = params.nFft || enclosingPowerOfTwo(complex.shape[1]);
     const winLength = params.winLength || nFft;
     const hopLength = params.hopLength || Math.floor(winLength / 4);
-    const center = params.center || false;
 
-    let ifftWindow = hannWindow(winLength);
+    let ifftWindowTF = tf.hannWindow(winLength);
+    let ifftWindow = ifftWindowTF.arraySync();
     // Adjust normalization for 75% Hann cola (factor of 1.5 with stft/istft).
     for (let i = 0; i < ifftWindow.length; i++) {
         ifftWindow[i] = ifftWindow[i] / 1.5;
@@ -258,38 +223,28 @@ function istft(reIm, params) {
 
     // Pre-allocate the audio output.
     const expectedSignalLen = nFft + hopLength * (nFrames - 1);
-    const y = new Float32Array(expectedSignalLen);
-    //console.log("expected signal length: " + expectedSignalLen, " Sample len: " + SAMPLE_LENGTH)
+    const istftResult = new Float32Array(expectedSignalLen);
+    // console.log("expected signal length: " + expectedSignalLen, " Sample len: " + SAMPLE_LENGTH)
 
-    // Perform inverse ffts.
-    for (let i = 0; i < nFrames; i++) {
+    // Perform inverse ffts and extract it from tensor as an array
+    let irfft = complex.irfft().arraySync()
+
+    // Apply Window to inverse ffts
+    for(let i = 0; i < complex.shape[0] - 1; i++){
         const sample = i * hopLength;
-        //console.log("IFFT input len: ", reIm[i].length)
-        let yTmp = ifft(reIm[i]);
-        //console.log("IFFT output len: ", yTmp.length)
-
+        let yTmp = irfft[i];
         yTmp = applyWindow(yTmp, ifftWindow);
-        yTmp = add(yTmp, y.slice(sample, sample + nFft));
-        y.set(yTmp, sample);
+        yTmp = add(yTmp, istftResult.slice(sample, sample + nFft));
+        istftResult.set(yTmp, sample);
     }
-
-    let sliceStart = 0;
-    let sliceLength = expectedSignalLen;
-    if (center) {
-        // Normally you would center the outputs,
-        sliceStart = nFft / 2;
-        sliceLength = y.length - (nFft / 2);
-    } else {
-        // For gansynth, we did all the padding at the front instead of centering,
-        // so remove the padding at the front.
-        sliceStart = expectedSignalLen - SAMPLE_LENGTH; // TODO: Figure out what this is 
-        sliceLength = y.length - sliceStart;
-    }
-    const yTrimmed = y.slice(sliceStart, sliceLength);
-    return yTrimmed;
+    return istftResult
 }
 
-//function add(arr0: Float32Array, arr1: Float32Array) {
+function enclosingPowerOfTwo(value) {
+    // Return 2**N for integer N such that 2**N >= value.
+    return Math.floor(Math.pow(2, Math.ceil(Math.log(value) / Math.log(2.0))));
+}
+
 function add(arr0, arr1) {
     if (arr0.length !== arr1.length) {
         console.error(
@@ -334,6 +289,9 @@ function interleaveReIm(real, imag) {
         //}
         resInterleaved.push(frame)
     }
+
+    // let resInterLeavedTF = tf.tensor2d(resInterleaved);
+    // let addPad = tf.pad(resInterLeavedTF, [[1,0], [0,0]])
 
     return resInterleaved
 }
