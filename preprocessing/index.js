@@ -13,7 +13,7 @@ const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
 let SAMPLE_LENGTH //64000
 
-const MODEL_2_STEMS = 'https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json'
+const MODEL_2_STEMS = 'https://raw.githubusercontent.com/shoegazerstella/spleeter_saved_models/master/saved_models_js/2stems/model.json'
 let spleeterModel
 
 // ISTT params:
@@ -30,7 +30,7 @@ const ispecParams = {
 // console.log(result)
 
 
-let arrayBuffer = fs.readFileSync("audio_example.mp3");
+//let arrayBuffer = fs.readFileSync("audio_example.mp3");
 //decodeFile(arrayBuffer);
 
 let channel0 = readFile('channel0');
@@ -44,9 +44,9 @@ console.log("\nProcessing channel 1\n")
 const result1 = preprocessing(channel1)
 
 
-let magTensor = createMagnitudeInputTensor(result0[0], result1[0])
+let modelInput = createInput(result0[0], result1[0])
 
-loadModel(magTensor)
+loadModel(modelInput)
     .catch(err => console.log(err))  
 
 
@@ -147,32 +147,24 @@ function magnitudeAndPhaseDecomposition(reImArray){
 }
 
 
-function createMagnitudeInputTensor(magArray0, magArray1){
-    const PATCH_LENGTH = magArray0.length
-    const INF_FREQ = FRAME_LENGTH / 4;
-    const PATCH_SIZE = 1 * PATCH_LENGTH * INF_FREQ * 2;
+function createInput(arr0, arr1){
 
-    const x = new Float32Array(PATCH_SIZE); // [time,freq,ch]
-    let inpMagAllZero = true;
-    for (var i = 0; i < INF_FREQ; i++) {
-        for (var j = 0; j < PATCH_LENGTH; j++) {
-            const xi = (j * INF_FREQ + i) * 2;
-            x[xi + 0] = magArray0[j][i];
-            x[xi + 1] = magArray1[j][i];
-            inpMagAllZero &= (x[xi + 0] == 0 && x[xi + 1] == 0);
-        }
-    }
+    const t1 = tf.tensor(arr0).reshape([-1,2])
+    const t2 = tf.tensor(arr1).reshape([-1,2])
+    return [{'waveform': t1}, {"audio_id" : ""}, {'waveform': t2}, {"audio_id" : ""}]
+    
 
-    const shape =  [1, PATCH_LENGTH, INF_FREQ, 2];
-    return tf.tensor(x, shape)
 
 }
-async function loadModel(magTensor) {
+async function loadModel(modelInput) {
 
     const modelUrl = MODEL_2_STEMS;
-    spleeterModel = await tf.loadGraphModel(modelUrl);
 
-    spleeterModel.predict(magTensor).print()
+    spleeterModel = await tf.loadGraphModel(modelUrl);
+    //console.log(spleeterModel)
+
+    console.log(modelInput)
+    spleeterModel.predict(modelInput).print()
     console.log("finish")
 }
   
@@ -362,13 +354,13 @@ function interleaveReIm(real, imag) {
 
     for(let i = 0; i < realArray.length - 1; i++){
         const frame = new Float32Array( (FRAME_LENGTH * 2)); // TODO: Check if this is correct (should it be -1)
-        //if (i < realArray.length - 1) {
+        // if (i < realArray.length - 1) {
             for(let j = 0; j < FRAME_LENGTH; j++){
                 frame[j*2+0] = realArray[i][j]; //Real
                 frame[j*2+1] = imagArray[i][j]; //Im
 
             }
-        //}
+        // }
         resInterleaved.push(frame)
     }
 
