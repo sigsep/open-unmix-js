@@ -52,7 +52,7 @@ inputs: {
       waveform: [Object]
     }
 */
-let modelInput = createInput(result0, result1, [channel0, channel1])
+let modelInput = createInput(result0, result1)
 
 loadModel(modelInput)
     .catch(err => console.log(err))  
@@ -163,7 +163,7 @@ inputs: {
       waveform: [Object]
     }
 */
-function createInput(res0, res1, channels){
+function createInput(res0, res1){
     const magArray0 = res0[0][0]
     const magArray1 = res1[0][0]
 	
@@ -193,9 +193,8 @@ function createInput(res0, res1, channels){
     
     const audio_id = tf.tensor("");
 
-    //return {"audio_id": audio_id,"mix_spectrogram":mix_spectrogram, "mix_stft": mix_stft, "waveform":waveform}
-    return [ waveform, mix_spectrogram, audio_id, mix_stft]
-
+    return {"Placeholder_1": audio_id,"strided_slice_3":mix_spectrogram, "transpose_1": mix_stft, "Placeholder":waveform}
+ 
 }
 async function loadModel(modelInput) {
 
