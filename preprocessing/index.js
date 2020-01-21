@@ -10,6 +10,7 @@ const decode = require('audio-decode');
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
+const PATCH_LENGTH = 512
 let SAMPLE_LENGTH //64000
 
 const MODEL_2_STEMS = 'https://raw.githubusercontent.com/shoegazerstella/spleeter_saved_models/master/saved_models_js/2stems/model.json'
@@ -38,8 +39,15 @@ const result0 = preprocessing(channel0)
 console.log("\nProcessing channel 1\n")
 const result1 = preprocessing(channel1)
 
-
-let modelInput = createInput(result0[0], result1[0])
+/*
+inputs: {
+      audio_id: [Object],
+      mix_spectrogram: [Object],
+      mix_stft: [Object],
+      waveform: [Object]
+    }
+*/
+let modelInput = createInput(result0, result1, [channel0, channel1])
 
 loadModel(modelInput)
     .catch(err => console.log(err))  
@@ -108,7 +116,7 @@ function preprocessing(channel){
     let magPhaseArray = magnitudeAndPhaseDecomposition(reImArray)
     console.log("magnitude len:", magPhaseArray[0].length, magPhaseArray[0][0].length, "phase len:", magPhaseArray[1].length,magPhaseArray[1][0].length)
 
-    return magPhaseArray
+    return [magPhaseArray, resultSTFT]
 }
 
 function postprocessing(reImArray){
@@ -143,13 +151,46 @@ function magnitudeAndPhaseDecomposition(reImArray){
 }
 
 
-function createInput(arr0, arr1){
+/*
+inputs: {
+      audio_id: [Object],
+      mix_spectrogram: [Object],
+      mix_stft: [Object],
+      waveform: [Object]
+    }
+*/
+function createInput(res0, res1, channels){
+    const magArray0 = res0[0][0]
+    const magArray1 = res1[0][0]
+	
+    const INF_FREQ = FRAME_LENGTH / 4;	
+    const PATCH_SIZE = 1 * PATCH_LENGTH * INF_FREQ * 2;
+    const spectogram = new Float32Array(PATCH_SIZE);
+  
+    for (var i = 0; i < INF_FREQ; i++) {
+        for (var j = 0; j < PATCH_LENGTH; j++) {	
+            const xi = (j * INF_FREQ + i) * 2;	
+            spectogram[xi + 0] = magArray0[j][i];	
+            spectogram[xi + 1] = magArray1[j][i];		
+        }	
+    }
 
-    const t1 = tf.tensor(arr0).reshape([-1,2])
-    const t2 = tf.tensor(arr1).reshape([-1,2])
-    return [{'waveform': t1}, {"audio_id" : ""}, {'waveform': t2}, {"audio_id" : ""}]
+    const mix_stft = tf.stack([res0[1], res1[1]]).transpose([1,2,0])
+    console.log("mix_stft",mix_stft.shape)
+
+    const shape =  [1, PATCH_LENGTH, INF_FREQ, 2];	
+    const mix_spectrogram =  tf.tensor(spectogram, shape)
+    console.log("mix_spectrogram",mix_spectrogram.shape)
+
     
 
+    const waveform = tf.input({shape: [2]});
+    //console.log("waveform", waveform)
+    
+    const audio_id = tf.tensor("");
+
+    //return {"audio_id": audio_id,"mix_spectrogram":mix_spectrogram, "mix_stft": mix_stft, "waveform":waveform}
+    return [ waveform, mix_spectrogram, audio_id, mix_stft]
 
 }
 async function loadModel(modelInput) {
@@ -159,8 +200,9 @@ async function loadModel(modelInput) {
     spleeterModel = await tf.loadGraphModel(modelUrl);
     //console.log(spleeterModel)
 
-    console.log(modelInput)
-    spleeterModel.predict(modelInput).print()
+    //console.log(modelInput)
+    let a =  await spleeterModel.executeAsync(modelInput)
+    a.print(true)
     console.log("finish")
 }
   
@@ -182,6 +224,7 @@ function readFile(file) {
     });
 
     stringToFloatArray = stringToFloatArray.slice(0, -1); // Remove the last element NaN
+    
 
     floatArray = stringToFloatArray;
 
@@ -315,15 +358,15 @@ function interleaveReIm(real, imag) {
 
     const resInterleaved = new Array();
 
-    for(let i = 0; i < realArray.length - 1; i++){
+    for(let i = 0; i < PATCH_LENGTH/*realArray.length - 1*/; i++){
         const frame = new Float32Array( (FRAME_LENGTH * 2)); // TODO: Check if this is correct (should it be -1)
-        // if (i < realArray.length - 1) {
+         if (i < realArray.length - 1) {
             for(let j = 0; j < FRAME_LENGTH; j++){
                 frame[j*2+0] = realArray[i][j]; //Real
                 frame[j*2+1] = imagArray[i][j]; //Im
 
             }
-        // }
+        }
         resInterleaved.push(frame)
     }
 
