@@ -5,9 +5,9 @@ const path = '../model/'
 
 const input = tf.randomNormal([100, 1, 2, 2049])
 
-a()
+load(path)
 
-async function a(){
+async function load(path){
 // model load
 const model = await tf.node.loadSavedModel(path);
 
