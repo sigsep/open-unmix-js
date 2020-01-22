@@ -47,7 +47,7 @@ inputs: {
       waveform: [Object]
     }
 */
-let modelInput = createInput(result0, result1)
+let modelInput = createInput(result0, result1, [channel0, channel1])
 
 loadModel(modelInput)
     .catch(err => console.log(err))  
@@ -159,7 +159,7 @@ inputs: {
       waveform: [Object]
     }
 */
-function createInput(res0, res1){
+function createInput(res0, res1, channels){
     const magArray0 = res0[0][0]
     const magArray1 = res1[0][0]
 	
