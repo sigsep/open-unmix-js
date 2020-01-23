@@ -11,21 +11,14 @@ const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
 const PATCH_LENGTH = 512
-let SAMPLE_LENGTH //64000
 
-const MODEL_2_STEMS = 'https://raw.githubusercontent.com/shoegazerstella/spleeter_saved_models/master/saved_models_js/2stems/model.json'
-let spleeterModel
+const path = './vocals'
 
 // ISTT params:
 const ispecParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
 };
-
-// const input = [1, 1, 1, 1, 1]
-// let result = preprocessing(input)
-// console.log(result)
-
 
 //let arrayBuffer = fs.readFileSync("audio_example.mp3");
 //decodeFile(arrayBuffer);
@@ -49,9 +42,31 @@ inputs: {
 */
 let modelInput = createInput(result0, result1, [channel0, channel1])
 
-loadModel(modelInput)
-    .catch(err => console.log(err))  
+load(path)
 
+async function load(path){
+// model load
+    const model = await tf.node.loadSavedModel(path);
+
+// prediction
+    const output = model.predict(modelInput[0]);
+
+    output.print(true)
+
+    let mix_stft = modelInput[1]
+    // let model_output = umx(tf.abs(mix_stft))
+    let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
+
+    let tensor4d = tf.tensor4d([0], [100, 1, 2, 2049], 'float32')
+
+    let estimate = tf.mul(tf.complex(output, tensor4d), tf.exp(tf.complex(0.0, mix_angle))).print(true)
+
+    exit()
+    // output = ISTFT(estimate, ...)
+    //
+    // output.print(true)
+    // console.log(output)
+}
 
 let wav = new wv.WaveFile();
 
@@ -110,13 +125,16 @@ function preprocessing(channel){
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
 
-    let reImArray = interleaveReIm(tf.real(resultSTFT), tf.imag(resultSTFT))
-    console.log("Shape after interleave: ", reImArray.length, reImArray[0].length)
+    return resultSTFT
 
-    let magPhaseArray = magnitudeAndPhaseDecomposition(reImArray)
-    console.log("magnitude len:", magPhaseArray[0].length, magPhaseArray[0][0].length, "phase len:", magPhaseArray[1].length,magPhaseArray[1][0].length)
+    // let reImArray = interleaveReIm(tf.real(resultSTFT), tf.imag(resultSTFT))
+    // console.log("Shape after interleave: ", reImArray.length, reImArray[0].length)
 
-    return [magPhaseArray, resultSTFT]
+
+    // let magPhaseArray = magnitudeAndPhaseDecomposition(reImArray)
+    // console.log("magnitude len:", magPhaseArray[0].length, magPhaseArray[0][0].length, "phase len:", magPhaseArray[1].length,magPhaseArray[1][0].length)
+
+    // return [magPhaseArray, resultSTFT]
 }
 
 function postprocessing(reImArray){
@@ -160,52 +178,87 @@ inputs: {
     }
 */
 function createInput(res0, res1, channels){
-    const magArray0 = res0[0][0]
-    const magArray1 = res1[0][0]
-	
-    const INF_FREQ = FRAME_LENGTH / 4;	
-    const PATCH_SIZE = 1 * PATCH_LENGTH * INF_FREQ * 2;
-    const spectogram = new Float32Array(PATCH_SIZE);
-  
-    for (var i = 0; i < INF_FREQ; i++) {
-        for (var j = 0; j < PATCH_LENGTH; j++) {	
-            const xi = (j * INF_FREQ + i) * 2;	
-            spectogram[xi + 0] = magArray0[j][i];	
-            spectogram[xi + 1] = magArray1[j][i];		
-        }	
-    }
+    // const magArray0 = res0[0][0]
+    // const magArray1 = res1[0][0]
+    //
+    // const INF_FREQ = FRAME_LENGTH / 4;
+    // const PATCH_SIZE = 1 * PATCH_LENGTH * INF_FREQ * 2;
+    // const spectogram = new Float32Array(PATCH_SIZE);
+    //
+    // for (var i = 0; i < INF_FREQ; i++) {
+    //     for (var j = 0; j < PATCH_LENGTH; j++) {
+    //         const xi = (j * INF_FREQ + i) * 2;
+    //         spectogram[xi + 0] = magArray0[j][i];
+    //         spectogram[xi + 1] = magArray1[j][i];
+    //     }
+    // }
+    //
+    // const mix_stft = tf.stack([res0[1], res1[1]]).transpose([1,2,0])
+    // console.log("mix_stft",mix_stft.shape)
+    //
+    // const shape =  [1, PATCH_LENGTH, INF_FREQ, 2];
+    // const mix_spectrogram =  tf.tensor(spectogram, shape)
+    // console.log("mix_spectrogram",mix_spectrogram.shape)
+    //
+    //
+    //
+    // const waveform = tf.input({shape: [2]});
+    // //console.log("waveform", waveform)
+    //
+    // const audio_id = tf.tensor("");
+    //
+    // return {"Placeholder_1": audio_id,"strided_slice_3":mix_spectrogram, "transpose_1": mix_stft, "Placeholder":waveform}
 
-    const mix_stft = tf.stack([res0[1], res1[1]]).transpose([1,2,0])
-    console.log("mix_stft",mix_stft.shape)
+    //Ugly things just to test
+    let absChannel0 = tf.abs(res0).slice([300,0], [100,2049])
+    let absChannel1 = tf.abs(res1).slice([300,0], [100,2049])
 
-    const shape =  [1, PATCH_LENGTH, INF_FREQ, 2];	
-    const mix_spectrogram =  tf.tensor(spectogram, shape)
-    console.log("mix_spectrogram",mix_spectrogram.shape)
+    const mix_stft = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2])
 
-    
+    return [mix_stft.expandDims(1), res0, res1];
 
-    const waveform = tf.input({shape: [2]});
-    //console.log("waveform", waveform)
-    
-    const audio_id = tf.tensor("");
 
-    return {"Placeholder_1": audio_id,"strided_slice_3":mix_spectrogram, "transpose_1": mix_stft, "Placeholder":waveform}
- 
+    //const tst = tf.
+    // let absChannel1 = tf.abs(res1).gather(0)
+
+
+    //
+    // const input = tf.tensor1d(channels[0], 'float32').arraySync().slice(0, 100)
+    //
+    // const batch = tf.tensor4d([1, 1, 1, 1], [100, 1, 2, 2049]).print(true)
+    //
+    // exit()
+    //
+    // const retVal = tf.tensor4d([input, batch, mix_stft]).print(true)
+    //
+    // exit()
+    // retVal.print(true)
+    //
+    // exit()
+    // return retVal
+
 }
+
+/**
+ * modelInput
+ * shape [100, 1, 2, 2049]
+ * 100 = frames
+ * 1 = sample/batch
+ * 2 = channels
+ * 2049 = frequencies
+ * @param modelInput
+ * @returns {Promise<void>}
+ */
 async function loadModel(modelInput) {
+    // model load
+    const model = await tf.node.loadSavedModel(path);
 
-    const modelUrl = MODEL_2_STEMS;
-
-    spleeterModel = await tf.loadGraphModel(modelUrl);
-    //console.log(spleeterModel)
-
-    //console.log(modelInput)
-    let a =  await spleeterModel.executeAsync(modelInput)
-    a.print(true)
-    console.log("finish")
+    // prediction
+    const output = model.predict(modelInput);
+    console.log(output)
 }
-  
-  
+
+
 
 /**
  *
@@ -223,7 +276,7 @@ function readFile(file) {
     });
 
     stringToFloatArray = stringToFloatArray.slice(0, -1); // Remove the last element NaN
-    
+
 
     floatArray = stringToFloatArray;
 
