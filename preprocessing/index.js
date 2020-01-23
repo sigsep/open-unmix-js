@@ -12,7 +12,12 @@ const HOP_LENGTH = 1024
 const SAMPLE_RATE = 44100
 const PATCH_LENGTH = 512
 
-const path = './vocals'
+const FREQUENCES = 2049
+const FRAMES = 100
+const N_CHANNELS = 2
+const N_BATCHES = 1
+
+const path = '../model/'
 
 // ISTT params:
 const ispecParams = {
@@ -23,96 +28,64 @@ const ispecParams = {
 //let arrayBuffer = fs.readFileSync("audio_example.mp3");
 //decodeFile(arrayBuffer);
 
-let channel0 = readFile('channel0');
-let channel1 = readFile('channel1');
+let channel0 = readFile('gaga_out0');
+let channel1 = readFile('gaga_out1');
 
-console.log("\n------------------- Test with KoeKestra's Data ---------------------------\n")
 console.log("\nProcessing channel 0\n")
 const result0 = preprocessing(channel0)
 console.log("\nProcessing channel 1\n")
 const result1 = preprocessing(channel1)
 
-/*
-inputs: {
-      audio_id: [Object],
-      mix_spectrogram: [Object],
-      mix_stft: [Object],
-      waveform: [Object]
-    }
-*/
-let modelInput = createInput(result0, result1, [channel0, channel1])
+loadAndPredict(path, [result0, result1]).then(arr => 
+    {          
+        let wav = new wv.WaveFile();
 
-load(path)
+        let output = new Float32Array(arr[0], arr[1])
 
-async function load(path){
-// model load
-    const model = await tf.node.loadSavedModel(path);
-
-// prediction
-    const output = model.predict(modelInput[0]);
-
-    output.print(true)
-
-    let mix_stft = modelInput[1]
-    // let model_output = umx(tf.abs(mix_stft))
-    let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
-
-    let tensor4d = tf.tensor4d([0], [100, 1, 2, 2049], 'float32')
-
-    let estimate = tf.mul(tf.complex(output, tensor4d), tf.exp(tf.complex(0.0, mix_angle))).print(true)
-
-    exit()
-    // output = ISTFT(estimate, ...)
-    //
-    // output.print(true)
-    // console.log(output)
-}
-
-let wav = new wv.WaveFile();
-
-
-let output = new Float32Array(result0, result1)
-
-wav.fromScratch(2, 22050, '32f',
-    output);
-
-fs.writeFileSync('testKoekestra.wav', wav.toBuffer());
-
-
-/**
- *
- * @param arrayBuffer
- */
-function decodeFile(arrayBuffer) {
-    decode(arrayBuffer, (err, audioBuffer) => {
-        try {
-
-            let channel0 = audioBuffer._channelData[0];
-            let channel1 = audioBuffer._channelData[1];
-
-            console.log("\n------------------- Test with WavDecoder's Data ---------------------------\n")
-            console.log("\nProcessing channel 0\n")
-            const result0 = preprocessing(channel0)
-            console.log("\nProcessing channel 1\n")
-            const result1 = preprocessing(channel1)
-
-            let output = new Float32Array(result0, result1)
-
-            let wav = new wv.WaveFile();
-            wav.fromScratch(2, SAMPLE_RATE, '32f',
+        wav.fromScratch(2, 22050, '32f',
             output);
 
-            fs.writeFileSync('testWavDecoder.wav', wav.toBuffer());
+        fs.writeFileSync('vocal_gaga.wav', wav.toBuffer());}
+    ).catch(e => console.log(e))
 
-        } catch (e) {
-            console.log(e)
-            throw e;
-        }
-    });
+
+/*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
+
+async function loadAndPredict(path, resultSTFT){
+
+    // model load
+    const model = await tf.node.loadSavedModel(path);
+
+    let result = [[],[]]
+
+    let number_of_frames = resultSTFT[0].shape[0]
+
+    for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
+        let input = createInput(resultSTFT[0], resultSTFT[1], i)
+        // prediction
+        const output = model.predict(input["model_input"]);
+
+        let estimate = tf.mul(tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])), 
+                              tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"])))
+        
+        // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+        let estimateReshaped = estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+
+        let res0 = istft(estimateReshaped[0], ispecParams)
+        let res1 = istft(estimateReshaped[1], ispecParams)
+
+        result = [[...result[0],...res0], [...result[1],...res1]]
+
+        estimate.dispose()
+        input["mix_angle"].dispose()
+        input["model_input"].dispose()
+    }
+    
+   
+    return result
 }
 
-/*--------------------- Process Functions ------------------------------------------------------------------------------------------------------*/
-
+    
 /**
  *  A function that applies TF's STFT and Magenta's ISTFT to a single Float32Array (a channel)
  * @param {*} channel
@@ -127,14 +100,6 @@ function preprocessing(channel){
 
     return resultSTFT
 
-    // let reImArray = interleaveReIm(tf.real(resultSTFT), tf.imag(resultSTFT))
-    // console.log("Shape after interleave: ", reImArray.length, reImArray[0].length)
-
-
-    // let magPhaseArray = magnitudeAndPhaseDecomposition(reImArray)
-    // console.log("magnitude len:", magPhaseArray[0].length, magPhaseArray[0][0].length, "phase len:", magPhaseArray[1].length,magPhaseArray[1][0].length)
-
-    // return [magPhaseArray, resultSTFT]
 }
 
 function postprocessing(reImArray){
@@ -147,118 +112,22 @@ function postprocessing(reImArray){
     return resultISTFT
 }
 
-// From Koekestra
-function magnitudeAndPhaseDecomposition(reImArray){
-    const mag   = [];
-    const phase = [];
-    let res = []
-    for (var frame = 0; frame < reImArray.length; frame++) {
-        const fmag   = new Float32Array(FRAME_LENGTH / 2 + 1);
-        const fphase = new Float32Array(FRAME_LENGTH / 2 + 1);
-        for (var i = 0; i < FRAME_LENGTH / 2 + 1; i++) {
-            fmag  [i] = Math.sqrt(Math.pow(reImArray[frame][i*2+1], 2) + Math.pow(reImArray[frame][i*2+0], 2));
-            fphase[i] = Math.atan2(reImArray[frame][i*2+1], reImArray[frame][i*2+0]);
-        }
-        mag  .push(fmag);
-        phase.push(fphase);
-    }
 
-    res.push(mag)
-    res.push(phase)
-    return res
-}
+function createInput(res0, res1, slice_start){
+    
+    let absChannel0 = tf.abs(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
+    let absChannel1 = tf.abs(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
+    const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
 
+    let chan0 = res0.slice([slice_start,0], [FRAMES, FREQUENCES])
+    let chan1 = res1.slice([slice_start,0], [FRAMES, FREQUENCES])
+    const mix_stft = tf.stack([chan0, chan1]).transpose([1, 0, 2]).expandDims(1)
 
-/*
-inputs: {
-      audio_id: [Object],
-      mix_spectrogram: [Object],
-      mix_stft: [Object],
-      waveform: [Object]
-    }
-*/
-function createInput(res0, res1, channels){
-    // const magArray0 = res0[0][0]
-    // const magArray1 = res1[0][0]
-    //
-    // const INF_FREQ = FRAME_LENGTH / 4;
-    // const PATCH_SIZE = 1 * PATCH_LENGTH * INF_FREQ * 2;
-    // const spectogram = new Float32Array(PATCH_SIZE);
-    //
-    // for (var i = 0; i < INF_FREQ; i++) {
-    //     for (var j = 0; j < PATCH_LENGTH; j++) {
-    //         const xi = (j * INF_FREQ + i) * 2;
-    //         spectogram[xi + 0] = magArray0[j][i];
-    //         spectogram[xi + 1] = magArray1[j][i];
-    //     }
-    // }
-    //
-    // const mix_stft = tf.stack([res0[1], res1[1]]).transpose([1,2,0])
-    // console.log("mix_stft",mix_stft.shape)
-    //
-    // const shape =  [1, PATCH_LENGTH, INF_FREQ, 2];
-    // const mix_spectrogram =  tf.tensor(spectogram, shape)
-    // console.log("mix_spectrogram",mix_spectrogram.shape)
-    //
-    //
-    //
-    // const waveform = tf.input({shape: [2]});
-    // //console.log("waveform", waveform)
-    //
-    // const audio_id = tf.tensor("");
-    //
-    // return {"Placeholder_1": audio_id,"strided_slice_3":mix_spectrogram, "transpose_1": mix_stft, "Placeholder":waveform}
+    let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
 
-    //Ugly things just to test
-    let absChannel0 = tf.abs(res0).slice([300,0], [100,2049])
-    let absChannel1 = tf.abs(res1).slice([300,0], [100,2049])
-
-    const mix_stft = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2])
-
-    return [mix_stft.expandDims(1), res0, res1];
-
-
-    //const tst = tf.
-    // let absChannel1 = tf.abs(res1).gather(0)
-
-
-    //
-    // const input = tf.tensor1d(channels[0], 'float32').arraySync().slice(0, 100)
-    //
-    // const batch = tf.tensor4d([1, 1, 1, 1], [100, 1, 2, 2049]).print(true)
-    //
-    // exit()
-    //
-    // const retVal = tf.tensor4d([input, batch, mix_stft]).print(true)
-    //
-    // exit()
-    // retVal.print(true)
-    //
-    // exit()
-    // return retVal
+    return {"model_input":model_input, "mix_angle":mix_angle}
 
 }
-
-/**
- * modelInput
- * shape [100, 1, 2, 2049]
- * 100 = frames
- * 1 = sample/batch
- * 2 = channels
- * 2049 = frequencies
- * @param modelInput
- * @returns {Promise<void>}
- */
-async function loadModel(modelInput) {
-    // model load
-    const model = await tf.node.loadSavedModel(path);
-
-    // prediction
-    const output = model.predict(modelInput);
-    console.log(output)
-}
-
-
 
 /**
  *
@@ -389,41 +258,4 @@ function add(arr0, arr1) {
         out[i] = arr0[i] + arr1[i];
     }
     return out;
-}
-
-/**
- * Interleave real and imaginary tensor values [re0, im0, re1, im1...]
- * @param real
- * @param imag
- * @returns {Float32Array[]}
- */
-function interleaveReIm(real, imag) {
-    console.log(real.shape, imag.shape)
-    const mirrorReal = tf.reverse(real.slice([0, 0], [real.shape[0], FRAME_LENGTH / 2 - 1]), 1);
-    real = tf.concat([real, mirrorReal], 1);
-
-    const mirrorImag = tf.reverse(imag.slice([0, 0], [imag.shape[0], FRAME_LENGTH / 2 - 1]), 1);
-    imag = tf.concat([imag, tf.mul(mirrorImag, -1.0)], 1);
-
-    let realArray = real.arraySync();
-    let imagArray = imag.arraySync();
-
-    const resInterleaved = new Array();
-
-    for(let i = 0; i < PATCH_LENGTH/*realArray.length - 1*/; i++){
-        const frame = new Float32Array( (FRAME_LENGTH * 2)); // TODO: Check if this is correct (should it be -1)
-         if (i < realArray.length - 1) {
-            for(let j = 0; j < FRAME_LENGTH; j++){
-                frame[j*2+0] = realArray[i][j]; //Real
-                frame[j*2+1] = imagArray[i][j]; //Im
-
-            }
-        }
-        resInterleaved.push(frame)
-    }
-
-    // let resInterLeavedTF = tf.tensor2d(resInterleaved);
-    // let addPad = tf.pad(resInterLeavedTF, [[1,0], [0,0]])
-
-    return resInterleaved
 }
