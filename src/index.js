@@ -1,11 +1,14 @@
 /**
  * Test file for STFT and ISTFT using tfjs and magenta/music
  */
-const tf = require('@tensorflow/tfjs');
+const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const mse = require('mse');
 const wv = require('wavefile');
 const decode = require('audio-decode');
+
+const Lame = require("node-lame").Lame;
+const {Howl, Howler} = require('howler');
 
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
@@ -19,6 +22,7 @@ const N_BATCHES = 1
 
 const path = "http://localhost:5000/vocals-tfjs-unilstm/model.json"
 const pb_path = "../model"
+const AUDIO_PATH = "../data/audio_example.mp3"
 
 // ISTT params:
 const ispecParams = {
@@ -26,8 +30,9 @@ const ispecParams = {
     hopLength: HOP_LENGTH,
 };
 
-//let arrayBuffer = fs.readFileSync("audio_example.mp3");
-//decodeFile(arrayBuffer);
+decodeFile(AUDIO_PATH);
+
+return
 
 let channel0 = readFile('../data/channel0');
 let channel1 = readFile('../data/channel1');
@@ -37,8 +42,8 @@ const result0 = preprocessing(channel0)
 console.log("\nProcessing channel 1\n")
 const result1 = preprocessing(channel1)
 
-loadAndPredict(path, [result0, result1]).then(arr => 
-    {          
+loadAndPredict(path, [result0, result1]).then(arr =>
+    {
         let wav = new wv.WaveFile();
 
         let output = new Float32Array(arr[0], arr[1])
@@ -52,11 +57,72 @@ loadAndPredict(path, [result0, result1]).then(arr =>
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
+/**
+ *
+ * @param outputPath
+ * @param channels
+ * @param nbChannels
+ * @param sampleRate
+ * @param bitDepthCode
+ */
+function compileSong(outputPath, channels, nbChannels, sampleRate, bitDepthCode){
+    let wav = new wv.WaveFile();
+
+    let output = new Float32Array(channels[0], channels[1])
+
+    wav.fromScratch(nbChannels, sampleRate, bitDepthCode, output);
+
+    fs.writeFileSync(outputPath, wav.toBuffer());
+}
+
+/**
+ *
+ * @param path
+ */
+function decodeFile(path){
+    const decoder = new Lame({
+        output: "buffer",
+        bitrate: 192,
+    }).setFile(path);
+
+    decoder
+        .decode()
+        .then(() => {
+            const buffer = decoder.getBuffer();
+            decodeFromBuffer(buffer)
+        })
+        .catch(error => {
+            console.log(error)
+        });
+}
+
+
+/**
+ *
+ * @param buffer
+ */
+function decodeFromBuffer(buffer){ //TODO separate this
+    decode(buffer, (err, audioBuffer) => {
+        const result0 = preprocessing(audioBuffer._channelData[0]);
+        const result1 = preprocessing(audioBuffer._channelData[1]);
+        loadAndPredict(path, [result0, result1]).then(arr => {
+            compileSong('tst.wav', [arr[0], arr[1]], 2, 22050, '32f')
+        });
+    });
+}
+
+
+/**
+ *
+ * @param path
+ * @param resultSTFT
+ * @returns {Promise<[][]>}
+ */
 async function loadAndPredict(path, resultSTFT){
 
     // model load
-    //const model = await tf.node.loadSavedModel(pb_path);
-    const model = await tf.loadGraphModel(path);
+    const model = await tf.node.loadSavedModel(pb_path);
+    //const model = await tf.loadGraphModel(path);
 
     let result = [[],[]]
 
@@ -68,9 +134,9 @@ async function loadAndPredict(path, resultSTFT){
         const output = model.predict(input["model_input"]);
         //const output = await model.predict(input["model_input"]);
 
-        let estimate = tf.mul(tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])), 
+        let estimate = tf.mul(tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
                               tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"])))
-        
+
         // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
         let estimateReshaped = estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
 
@@ -83,12 +149,12 @@ async function loadAndPredict(path, resultSTFT){
         input["mix_angle"].dispose()
         input["model_input"].dispose()
     }
-    
-   
+
+
     return result
 }
 
-    
+
 /**
  *  A function that applies TF's STFT and Magenta's ISTFT to a single Float32Array (a channel)
  * @param {*} channel
@@ -105,6 +171,11 @@ function preprocessing(channel){
 
 }
 
+/**
+ *
+ * @param reImArray
+ * @returns {Float32Array}
+ */
 function postprocessing(reImArray){
     let resultISTFT = istft(reImArray, ispecParams);
     console.log("Shape after ISTFT: ", resultISTFT.length)
@@ -117,7 +188,7 @@ function postprocessing(reImArray){
 
 
 function createInput(res0, res1, slice_start){
-    
+
     let absChannel0 = tf.abs(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
     let absChannel1 = tf.abs(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
     const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
