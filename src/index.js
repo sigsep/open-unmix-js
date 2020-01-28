@@ -7,22 +7,22 @@ const mse = require('mse');
 const wv = require('wavefile');
 const decode = require('audio-decode');
 
-const Lame = require("node-lame").Lame;
-const {Howl, Howler} = require('howler');
-
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
-const SAMPLE_RATE = 44100
+const SAMPLE_RATE = 22050
 const PATCH_LENGTH = 512
 
 const FREQUENCES = 2049
 const FRAMES = 100
 const N_CHANNELS = 2
 const N_BATCHES = 1
+const PADDING = 10 // Padding for model prediction
 
 const path = "http://localhost:5000/vocals-tfjs-unilstm/model.json"
 const pb_path = "../model"
 const AUDIO_PATH = "../data/audio_example.mp3"
+// const AUDIO_PATH = "../data/Shallow_CUT.mp3"
+//const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
 
 // ISTT params:
 const ispecParams = {
@@ -30,30 +30,12 @@ const ispecParams = {
     hopLength: HOP_LENGTH,
 };
 
+
+tf.enableProdMode()
+
+let counterChunk = 0;
+
 decodeFile(AUDIO_PATH);
-
-return
-
-let channel0 = readFile('../data/channel0');
-let channel1 = readFile('../data/channel1');
-
-console.log("\nProcessing channel 0\n")
-const result0 = preprocessing(channel0)
-console.log("\nProcessing channel 1\n")
-const result1 = preprocessing(channel1)
-
-loadAndPredict(path, [result0, result1]).then(arr =>
-    {
-        let wav = new wv.WaveFile();
-
-        let output = new Float32Array(arr[0], arr[1])
-
-        wav.fromScratch(2, 22050, '32f',
-            output);
-
-        fs.writeFileSync('vocal.wav', wav.toBuffer());}
-    ).catch(e => console.log(e))
-
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
@@ -103,11 +85,41 @@ function decodeFile(path){
  */
 function decodeFromBuffer(buffer){ //TODO separate this
     decode(buffer, (err, audioBuffer) => {
-        const result0 = preprocessing(audioBuffer._channelData[0]);
-        const result1 = preprocessing(audioBuffer._channelData[1]);
-        loadAndPredict(path, [result0, result1]).then(arr => {
-            compileSong('tst.wav', [arr[0], arr[1]], 2, 22050, '32f')
-        });
+
+        console.log(audioBuffer.length)
+        const numPatches = Math.floor(Math.floor((audioBuffer.length - 1) / HOP_LENGTH) / PATCH_LENGTH) + 1;
+
+        console.log(numPatches)
+        // console.log(numPatches,(numPatches * PATCH_LENGTH * HOP_LENGTH), PATCH_LENGTH * HOP_LENGTH)
+        let start = 0
+
+        let channel0_stem = [];
+        let channel1_stem = [];
+
+        let chunk = Math.floor(audioBuffer.length / numPatches)
+        let end = chunk
+        for (let i = 0; i < numPatches; i++) {
+            console.log("Start processing chunk: "+i)
+            const result0 = preprocessing(audioBuffer._channelData[0].slice(start, end));
+            const result1 = preprocessing(audioBuffer._channelData[1].slice(start, end));
+            loadAndPredict(path, [result0, result1])
+                .then(arr => {
+
+                channel0_stem[i] = arr[0];
+                channel1_stem[i] = arr[1];
+
+                if(counterChunk === numPatches - 1){
+                    compileSong('test4.wav', [channel0_stem.flat(), channel1_stem.flat()], 2, SAMPLE_RATE, '32f')
+                }
+                counterChunk++
+                result0.dispose()
+                result1.dispose()
+            });
+            console.log("End processing chunk: "+i)
+            start+=chunk+1
+            end = start+chunk
+        }
+
     });
 }
 
@@ -123,47 +135,51 @@ async function loadAndPredict(path, resultSTFT){
     // model load
     const model = await tf.node.loadSavedModel(pb_path);
     //const model = await tf.loadGraphModel(path);
-
     let result = [[],[]]
-
     let number_of_frames = resultSTFT[0].shape[0]
 
-    for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
+
+    for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
         let input = createInput(resultSTFT[0], resultSTFT[1], i)
         // prediction
-        const output = model.predict(input["model_input"]);
+        const output = tf.tidy(() => {
+            let paddedPredict = model.predict(input["model_input"]);
+            return paddedPredict.slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, 2049])
+        })
+
+        // Used in normal tensorflow
         //const output = await model.predict(input["model_input"]);
 
-        let estimate = tf.mul(tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
-                              tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"])))
+        const estimateReshaped = tf.tidy(() => {
+            let mix_angle = input["mix_angle"].slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, 2049])
 
-        // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
-        let estimateReshaped = estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+            let result = tf.mul(tf.complex(output, tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES])),
+                tf.exp(tf.complex(tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES]), mix_angle)))
+            // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+            return result.unstack(2).map(tensor => tensor.squeeze())
+        });
 
         let res0 = istft(estimateReshaped[0], ispecParams)
         let res1 = istft(estimateReshaped[1], ispecParams)
 
+        // Push into result 2 channels
         result = [[...result[0],...res0], [...result[1],...res1]]
 
-        estimate.dispose()
-        input["mix_angle"].dispose()
-        input["model_input"].dispose()
     }
 
-
-    return result
+    return result;
 }
 
-
 /**
- *  A function that applies TF's STFT and Magenta's ISTFT to a single Float32Array (a channel)
+ *  A function that applies TF's STFT to a single Float32Array (a channel)
  * @param {*} channel
  * @returns A Float32Array that should be similar to the original channel
  */
 function preprocessing(channel){
     console.log("Shape of input: " + channel.length)
 
-    const input = tf.tensor1d(channel, 'float32') // Here there's a bug that makes the array lose precision
+    const input = tf.tensor1d(channel) // Here there's a bug that makes the array lose precision
+
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
 
@@ -189,44 +205,32 @@ function postprocessing(reImArray){
 
 function createInput(res0, res1, slice_start){
 
-    let absChannel0 = tf.abs(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
-    let absChannel1 = tf.abs(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
-    const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+    let pad =tf.zeros([5,2049], 'complex64')
 
-    let chan0 = res0.slice([slice_start,0], [FRAMES, FREQUENCES])
-    let chan1 = res1.slice([slice_start,0], [FRAMES, FREQUENCES])
-    const mix_stft = tf.stack([chan0, chan1]).transpose([1, 0, 2]).expandDims(1)
+    let paddedRes0 = tf.concat([pad,res0.slice([slice_start,0], [FRAMES-10, FREQUENCES]),pad])
+    let paddedRes1 = tf.concat([pad,res1.slice([slice_start,0], [FRAMES-10, FREQUENCES]),pad])
 
-    let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
+    const model_input = tf.tidy(() => {
+        let absChannel0 = tf.abs(paddedRes0)
+        let absChannel1 = tf.abs(paddedRes1)
+        return tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+    });
 
+    const mix_stft = tf.tidy(() => {
+        return tf.stack([paddedRes0, paddedRes1]).transpose([1, 0, 2]).expandDims(1)
+    })
+
+    const mix_angle = tf.tidy(() => {
+        return tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
+    });
+
+    mix_stft.dispose()
+    pad.dispose()
+    paddedRes0.dispose()
+    paddedRes1.dispose()
     return {"model_input":model_input, "mix_angle":mix_angle}
 
 }
-
-/**
- *
- * @param file
- * @returns Float32Array with the values from file
- */
-function readFile(file) {
-    let arrayBuffer = fs.readFileSync(file).toString('utf-8');
-    let textByLine = arrayBuffer.split(" ");
-
-    let floatArray = new Float32Array(textByLine.length - 1) // -1 cuz the last value is NaN
-
-    let stringToFloatArray = textByLine.map(function(c) {
-        return parseFloat(c).toPrecision(16);
-    });
-
-    stringToFloatArray = stringToFloatArray.slice(0, -1); // Remove the last element NaN
-
-
-    floatArray = stringToFloatArray;
-
-    return floatArray;
-}
-
-
 
 // function padConstant(data: Float32Array, padding: number|number[]) {
 function padConstant(data, padding) {
