@@ -6,6 +6,7 @@ const fs = require('fs');
 const mse = require('mse');
 const wv = require('wavefile');
 const decode = require('audio-decode');
+const Lame = require("node-lame").Lame;
 
 const FRAME_LENGTH = 4096
 const HOP_LENGTH = 1024
@@ -24,7 +25,7 @@ const AUDIO_PATH = "../data/audio_example.mp3"
 // const AUDIO_PATH = "../data/Shallow_CUT.mp3"
 //const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
 
-// ISTT params:
+// STFT and ISTFT params:
 const ispecParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
@@ -35,7 +36,7 @@ tf.enableProdMode()
 
 let counterChunk = 0;
 
-decodeFile(AUDIO_PATH);
+// decodeFile(AUDIO_PATH);
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
@@ -61,17 +62,18 @@ function compileSong(outputPath, channels, nbChannels, sampleRate, bitDepthCode)
  *
  * @param path
  */
-function decodeFile(path){
+async function decodeFile(path){
     const decoder = new Lame({
         output: "buffer",
         bitrate: 192,
     }).setFile(path);
 
-    decoder
+    return decoder
         .decode()
         .then(() => {
             const buffer = decoder.getBuffer();
-            decodeFromBuffer(buffer)
+            return buffer
+            // decodeFromBuffer(buffer)
         })
         .catch(error => {
             console.log(error)
@@ -100,8 +102,8 @@ function decodeFromBuffer(buffer){ //TODO separate this
         let end = chunk
         for (let i = 0; i < numPatches; i++) {
             console.log("Start processing chunk: "+i)
-            const result0 = preprocessing(audioBuffer._channelData[0].slice(start, end));
-            const result1 = preprocessing(audioBuffer._channelData[1].slice(start, end));
+            const result0 = preProcessing(audioBuffer._channelData[0].slice(start, end));
+            const result1 = preProcessing(audioBuffer._channelData[1].slice(start, end));
             loadAndPredict(path, [result0, result1])
                 .then(arr => {
 
@@ -175,11 +177,13 @@ async function loadAndPredict(path, resultSTFT){
  * @param {*} channel
  * @returns A Float32Array that should be similar to the original channel
  */
-function preprocessing(channel){
+function preProcessing(channel){
     console.log("Shape of input: " + channel.length)
 
     const input = tf.tensor1d(channel) // Here there's a bug that makes the array lose precision
 
+    input.print(true)
+    console.log(FRAME_LENGTH, HOP_LENGTH)
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
 
@@ -187,6 +191,8 @@ function preprocessing(channel){
 
 }
 
+
+//export { preProcessing };
 /**
  *
  * @param reImArray
@@ -250,7 +256,7 @@ function padCenterToLength(data, length) {
     // If data is longer than length, error!
     if (data.length > length) {
         console.log(data.length, length)
-        throw new Error('Data is longer than length.');
+        throw new Error('Data ' + data.length + 'is longer than length ' + length);
     }
 
     const paddingLeft = Math.floor((length - data.length) / 2);
@@ -302,14 +308,14 @@ function istft(complex, params) {
 
     // Pre-allocate the audio output.
     const expectedSignalLen = nFft + hopLength * (nFrames - 1);
+    console.log(expectedSignalLen)
     const istftResult = new Float32Array(expectedSignalLen);
-    // console.log("expected signal length: " + expectedSignalLen, " Sample len: " + SAMPLE_LENGTH)
 
     // Perform inverse ffts and extract it from tensor as an array
     let irfft = complex.irfft().arraySync()
 
     // Apply Window to inverse ffts
-    for(let i = 0; i < complex.shape[0] - 1; i++){
+    for(let i = 0; i < nFrames - 1; i++){
         const sample = i * hopLength;
         let yTmp = irfft[i];
         yTmp = applyWindow(yTmp, ifftWindow);
@@ -330,10 +336,14 @@ function add(arr0, arr1) {
             `Array lengths must be equal to add: ${arr0.length}, ${arr0.length}`);
         return null;
     }
-
     const out = new Float32Array(arr0.length);
     for (let i = 0; i < arr0.length; i++) {
         out[i] = arr0[i] + arr1[i];
     }
     return out;
 }
+
+exports.preProcessing = preProcessing;
+exports.istft = istft;
+exports.compileSong = compileSong;
+exports.decodeFile = decodeFile;
