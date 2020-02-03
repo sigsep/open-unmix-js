@@ -1,7 +1,7 @@
 /**
  * Test file for STFT and ISTFT using tfjs and magenta/music
  */
-const tf = require('@tensorflow/tfjs');
+const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const mse = require('mse');
 const wv = require('wavefile');
@@ -9,43 +9,37 @@ const decode = require('audio-decode');
 const Lame = require("node-lame").Lame;
 const FFT = require("fft.js");
 
-const FRAME_LENGTH = 4096
+const FRAME_LENGTH = 2048
 const HOP_LENGTH = 1024
+const NFFT = 2048
 const SAMPLE_RATE = 22050
-const PATCH_LENGTH = 512
+const PATCH_LENGTH = 256
 
-const FREQUENCES = 2049
+
+const FREQUENCES = 1025 //2049
 const FRAMES = 256 //100
 const N_CHANNELS = 2
 const N_BATCHES = 1
-const PADDING = 10 // Padding for model prediction
+const PADDING = 8 // Padding for model prediction
 
-const path = "http://localhost:5000/vocals-tfjs-unilstm/model.json"
+const path = 'http://localhost:5000/modelJs/model.json'
 const pb_path = "../model"
 const AUDIO_PATH = "../data/audio_example.mp3"
-//const AUDIO_PATH = "../data/Shallow_CUT.mp3"
+// const AUDIO_PATH = "../data/Shallow_CUT.mp3"
 //const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
 
 // STFT and ISTFT params:
 const ispecParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
+    nFft: NFFT
 };
 
 
 tf.enableProdMode()
 
-// let channel0 = readFile('channel0');
-// let channel1 = readFile('channel1');
-//
-// console.log("\nProcessing channel 0\n")
-// const result0 = preProcessing(channel0)
-// console.log("\nProcessing channel 1\n")
-// const result1 = preProcessing(channel1)
-
 let counterChunk = 0;
-
-// decodeFile(AUDIO_PATH);
+decodeFile(AUDIO_PATH);
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
@@ -71,22 +65,42 @@ function compileSong(outputPath, channels, nbChannels, sampleRate, bitDepthCode)
  *
  * @param path
  */
-async function decodeFile(path){
+function decodeFile(path){
     const decoder = new Lame({
         output: "buffer",
         bitrate: 192,
     }).setFile(path);
 
-    return decoder
+    decoder
         .decode()
         .then(() => {
             const buffer = decoder.getBuffer();
-            decodeFromBuffer(buffer)
+            // decodeFromBuffer(buffer)
+            decodeFromBuffer2(buffer)
         })
         .catch(error => {
             console.log(error)
         });
 }
+
+
+function decodeFromBuffer2(buffer){ //TODO separate this
+    decode(buffer, (err, audioBuffer) => {
+
+        console.log(audioBuffer.length)
+
+        const result0 = preProcessing(audioBuffer._channelData[0]);
+        const result1 = preProcessing(audioBuffer._channelData[1]);
+        loadAndPredict(path, [result0, result1])
+            .then(arr => {
+                console.log("Compiling song")
+                compileSong('testUsingNode_modelWithoutLSTM.wav', [arr[0], arr[1]], 2, SAMPLE_RATE, '32f')
+            });
+
+
+    });
+}
+
 
 
 /**
@@ -119,7 +133,7 @@ function decodeFromBuffer(buffer){ //TODO separate this
                 channel1_stem[i] = arr[1];
 
                 if(counterChunk === numPatches - 1){
-                    compileSong('testOldISTFT.wav', [channel0_stem.flat(), channel1_stem.flat()], 2, SAMPLE_RATE, '32f')
+                    compileSong('testUsingNode.wav', [channel0_stem.flat(), channel1_stem.flat()], 2, SAMPLE_RATE, '32f')
                 }
                 counterChunk++
                 result0.dispose()
@@ -143,34 +157,46 @@ function decodeFromBuffer(buffer){ //TODO separate this
 async function loadAndPredict(path, resultSTFT){
 
     // model load
-    // const model = await tf.node.loadSavedModel(pb_path);
-    const model = await tf.loadGraphModel(path);
+    const model = await tf.node.loadSavedModel(pb_path);
+    //const model = await tf.loadGraphModel(path);
     let result = [[],[]]
     let number_of_frames = resultSTFT[0].shape[0]
 
 
-    for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
+    // for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
+    for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
         let input = createInput(resultSTFT[0], resultSTFT[1], i)
         // prediction
         const output = tf.tidy(() => {
-            let paddedPredict = model.executeAsync(input["model_input"]);
-            return paddedPredict.slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, 2049])
+            return paddedPredict = model.predict(input["model_input"]);
+            // let paddedPredict = model.predict(input["model_input"]);
+            // return paddedPredict.slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
         })
 
         // Used in normal tensorflow
         //const output = await model.predict(input["model_input"]);
 
-        const estimateReshaped = tf.tidy(() => {
-            let mix_angle = input["mix_angle"].slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, 2049])
+        // const estimateReshaped = tf.tidy(() => {
+        //     let mix_angle = input["mix_angle"].slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
+        //
+        //     let result = tf.mul(tf.complex(output, tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES])),
+        //         tf.exp(tf.complex(tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES]), mix_angle)))
+        //     // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+        //     return result.unstack(2).map(tensor => tensor.squeeze())
+        // });
+        //
+        // let res0 = istft(estimateReshaped[0], ispecParams)
+        // let res1 = istft(estimateReshaped[1], ispecParams)
 
-            let result = tf.mul(tf.complex(output, tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES])),
-                tf.exp(tf.complex(tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES]), mix_angle)))
-            // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
-            return result.unstack(2).map(tensor => tensor.squeeze())
-        });
+        let estimate = tf.mul(tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
+            tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"])))
+
+        // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+        let estimateReshaped = estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
 
         let res0 = istft(estimateReshaped[0], ispecParams)
         let res1 = istft(estimateReshaped[1], ispecParams)
+
 
         // Push into result 2 channels
         result = [[...result[0],...res0], [...result[1],...res1]]
@@ -190,9 +216,9 @@ function preProcessing(channel){
 
     const input = tf.tensor1d(channel) // Here there's a bug that makes the array lose precision
 
-    input.print(true)
     console.log(FRAME_LENGTH, HOP_LENGTH)
-    let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
+    let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH, NFFT);
+    // let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
 
     return resultSTFT
@@ -219,7 +245,7 @@ function postprocessing(reImArray){
 
 function createInput(res0, res1, slice_start){
 
-    let pad =tf.zeros([5,2049], 'complex64')
+    let pad =tf.zeros([5,FREQUENCES], 'complex64')
 
     let paddedRes0 = tf.concat([pad,res0.slice([slice_start,0], [FRAMES-10, FREQUENCES]),pad])
     let paddedRes1 = tf.concat([pad,res1.slice([slice_start,0], [FRAMES-10, FREQUENCES]),pad])
@@ -320,21 +346,21 @@ function istft(complex, params) {
     const istftResult = new Float32Array(expectedSignalLen);
 
     // Perform inverse ffts and extract it from tensor as an array
-    //let irfft = complex.irfft().arraySync()
+    let irfft = complex.irfft().arraySync()
 
     //let ifft = complex.ifft();
 
-    let real = tf.real(complex)
-    let imag = tf.imag(complex)
-
-    let reIm = interleaveReIm(real, imag)
+    // let real = tf.real(complex)
+    // let imag = tf.imag(complex)
+    //
+    // let reIm = interleaveReIm(real, imag)
 
     // Apply Window to inverse ffts
     for(let i = 0; i < nFrames - 1; i++){
         const sample = i * hopLength;
-        // let yTmp = irfft[i];
+        let yTmp = irfft[i];
         // let yTmp = reIm[i];
-        let yTmp = ifft(reIm[i])
+        // let yTmp = ifft(reIm[i])
         yTmp = applyWindow(yTmp, ifftWindow);
         yTmp = add(yTmp, istftResult.slice(sample, sample + nFft));
         istftResult.set(yTmp, sample);
@@ -408,6 +434,24 @@ function ifft(reIm) {
     // Just take the real part.
     const result = fft.fromComplexArray(recon);
     return result;
+}
+
+function readFile(file) {
+    let arrayBuffer = fs.readFileSync(file).toString('utf-8');
+    let textByLine = arrayBuffer.split(" ");
+
+    let floatArray = new Float32Array(textByLine.length - 1) // -1 cuz the last value is NaN
+
+    let stringToFloatArray = textByLine.map(function(c) {
+        return parseFloat(c).toPrecision(16);
+    });
+
+    stringToFloatArray = stringToFloatArray.slice(0, -1); // Remove the last element NaN
+
+
+    floatArray = stringToFloatArray;
+
+    return floatArray;
 }
 
 exports.preProcessing = preProcessing;
