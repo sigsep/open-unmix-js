@@ -1,7 +1,6 @@
 /**
  * Test file for STFT and ISTFT using tfjs and magenta/music
  */
-const DEBUG = false
 
 const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs'); //Still used to test songs TODO must remove
