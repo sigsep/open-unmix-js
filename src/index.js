@@ -26,7 +26,7 @@ const path = 'http://localhost:5000/modelJs/model.json'
 const pb_path = "../model"
 const AUDIO_PATH = "../data/audio_example.mp3"
 // const AUDIO_PATH = "../data/Shallow_CUT.mp3"
-//const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
+// const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
 
 // STFT and ISTFT params:
 const ispecParams = {
@@ -39,7 +39,7 @@ const ispecParams = {
 tf.enableProdMode()
 
 let counterChunk = 0;
-decodeFile(AUDIO_PATH);
+//decodeFile(AUDIO_PATH);
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
@@ -75,7 +75,7 @@ function decodeFile(path){
         .decode()
         .then(() => {
             const buffer = decoder.getBuffer();
-            // decodeFromBuffer(buffer)
+            //decodeFromBuffer(buffer)
             decodeFromBuffer2(buffer)
         })
         .catch(error => {
@@ -91,12 +91,11 @@ function decodeFromBuffer2(buffer){ //TODO separate this
 
         const result0 = preProcessing(audioBuffer._channelData[0]);
         const result1 = preProcessing(audioBuffer._channelData[1]);
-        loadAndPredict(path, [result0, result1])
-            .then(arr => {
-                console.log("Compiling song")
-                compileSong('testUsingNode_modelWithoutLSTM.wav', [arr[0], arr[1]], 2, SAMPLE_RATE, '32f')
-            });
 
+        const istft0 = istft(result0, ispecParams)
+        const istft1 = istft(result1, ispecParams)
+        console.log("Compiling song without model")
+        compileSong('withoutModel.wav', [istft0, istft1], 2, SAMPLE_RATE, '32f')
 
     });
 }
@@ -110,18 +109,17 @@ function decodeFromBuffer2(buffer){ //TODO separate this
 function decodeFromBuffer(buffer){ //TODO separate this
     decode(buffer, (err, audioBuffer) => {
 
-        console.log(audioBuffer.length)
+        console.log("Buffer length: " + audioBuffer.length)
         const numPatches = Math.floor(Math.floor((audioBuffer.length - 1) / HOP_LENGTH) / PATCH_LENGTH) + 1;
 
-        console.log(numPatches)
+        console.log("Num patches " + numPatches)
         // console.log(numPatches,(numPatches * PATCH_LENGTH * HOP_LENGTH), PATCH_LENGTH * HOP_LENGTH)
         let start = 0
-
         let channel0_stem = [];
         let channel1_stem = [];
-
         let chunk = Math.floor(audioBuffer.length / numPatches)
         let end = chunk
+        console.log("chunk ", chunk)
         for (let i = 0; i < numPatches; i++) {
             console.log("Start processing chunk: "+i)
             const result0 = preProcessing(audioBuffer._channelData[0].slice(start, end));
@@ -133,12 +131,13 @@ function decodeFromBuffer(buffer){ //TODO separate this
                 channel1_stem[i] = arr[1];
 
                 if(counterChunk === numPatches - 1){
-                    compileSong('testUsingNode.wav', [channel0_stem.flat(), channel1_stem.flat()], 2, SAMPLE_RATE, '32f')
+                    console.log("Compiling song")
+                    compileSong('newModelTest.wav', [channel0_stem.flat(), channel1_stem.flat()], 2, SAMPLE_RATE, '32f')
                 }
                 counterChunk++
                 result0.dispose()
                 result1.dispose()
-            });
+            })
             console.log("End processing chunk: "+i)
             start+=chunk+1
             end = start+chunk
@@ -160,17 +159,26 @@ async function loadAndPredict(path, resultSTFT){
     const model = await tf.node.loadSavedModel(pb_path);
     //const model = await tf.loadGraphModel(path);
     let result = [[],[]]
+
     let number_of_frames = resultSTFT[0].shape[0]
 
+    console.log("Number of frames", number_of_frames)
 
-    // for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
-    for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
-        let input = createInput(resultSTFT[0], resultSTFT[1], i)
+    //Fill with zeros
+    if(number_of_frames < FRAMES){
+        let fillZeros = FRAMES - number_of_frames
+        let pad =tf.zeros([fillZeros,FREQUENCES], 'complex64')
+        resultSTFT[0] = tf.concat([resultSTFT[0],pad])
+        resultSTFT[1] = tf.concat([resultSTFT[1],pad])
+    }
+    //for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
+    // for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
+        let input = createInput(resultSTFT[0], resultSTFT[1], 0)
         // prediction
         const output = tf.tidy(() => {
-            return paddedPredict = model.predict(input["model_input"]);
+            return model.predict(input["model_input"]);
             // let paddedPredict = model.predict(input["model_input"]);
-            // return paddedPredict.slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
+            // return paddedPredict.slice([(PADDING/2), 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
         })
 
         // Used in normal tensorflow
@@ -201,7 +209,7 @@ async function loadAndPredict(path, resultSTFT){
         // Push into result 2 channels
         result = [[...result[0],...res0], [...result[1],...res1]]
 
-    }
+    //}
 
     return result;
 }
@@ -213,16 +221,11 @@ async function loadAndPredict(path, resultSTFT){
  */
 function preProcessing(channel){
     console.log("Shape of input: " + channel.length)
-
     const input = tf.tensor1d(channel) // Here there's a bug that makes the array lose precision
-
-    console.log(FRAME_LENGTH, HOP_LENGTH)
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH, NFFT);
     // let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
-
     return resultSTFT
-
 }
 
 
@@ -244,31 +247,40 @@ function postprocessing(reImArray){
 
 
 function createInput(res0, res1, slice_start){
-
-    let pad =tf.zeros([5,FREQUENCES], 'complex64')
-
-    let paddedRes0 = tf.concat([pad,res0.slice([slice_start,0], [FRAMES-10, FREQUENCES]),pad])
-    let paddedRes1 = tf.concat([pad,res1.slice([slice_start,0], [FRAMES-10, FREQUENCES]),pad])
-
-    const model_input = tf.tidy(() => {
-        let absChannel0 = tf.abs(paddedRes0)
-        let absChannel1 = tf.abs(paddedRes1)
-        return tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
-    });
-
-    const mix_stft = tf.tidy(() => {
-        return tf.stack([paddedRes0, paddedRes1]).transpose([1, 0, 2]).expandDims(1)
-    })
-
-    const mix_angle = tf.tidy(() => {
-        return tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
-    });
-
-    mix_stft.dispose()
-    pad.dispose()
-    paddedRes0.dispose()
-    paddedRes1.dispose()
+    let absChannel0 = tf.abs(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
+    let absChannel1 = tf.abs(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
+    const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+    let chan0 = res0.slice([slice_start,0], [FRAMES, FREQUENCES])
+    let chan1 = res1.slice([slice_start,0], [FRAMES, FREQUENCES])
+    const mix_stft = tf.stack([chan0, chan1]).transpose([1, 0, 2]).expandDims(1)
+    let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
     return {"model_input":model_input, "mix_angle":mix_angle}
+
+    // let pad =tf.zeros([PADDING,FREQUENCES], 'complex64')
+    //
+    // let paddedRes0 = tf.concat([pad,res0.slice([slice_start,0], [FRAMES-PADDING, FREQUENCES]),pad])
+    // let paddedRes1 = tf.concat([pad,res1.slice([slice_start,0], [FRAMES-PADDING, FREQUENCES]),pad])
+    //
+    // const model_input = tf.tidy(() => {
+    //     let absChannel0 = tf.abs(paddedRes0)
+    //     let absChannel1 = tf.abs(paddedRes1)
+    //     return tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+    // });
+    //
+    // const mix_stft = tf.tidy(() => {
+    //     return tf.stack([res0, res1]).transpose([1, 0, 2]).expandDims(1)
+    //     // return tf.stack([paddedRes0, paddedRes1]).transpose([1, 0, 2]).expandDims(1)
+    // })
+    //
+    // const mix_angle = tf.tidy(() => {
+    //     return tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
+    // });
+    //
+    // mix_stft.dispose()
+    // pad.dispose()
+    // paddedRes0.dispose()
+    // paddedRes1.dispose()
+    // return {"model_input":model_input, "mix_angle":mix_angle}
 
 }
 
@@ -324,48 +336,60 @@ function applyWindow(buffer, win) {
  * @returns {Float32Array}
  */
 function istft(complex, params) {
+    console.log(complex.shape)
+
     const nFrames = complex.shape[0];
     const nFft = params.nFft || enclosingPowerOfTwo(complex.shape[1]);
     const winLength = params.winLength || nFft;
     const hopLength = params.hopLength || Math.floor(winLength / 4);
 
-    // let ifftWindowTF = tf.hannWindow(winLength);
     let ifftWindowTF = tf.hannWindow(winLength);
+
     let ifftWindow = ifftWindowTF.arraySync();
+
     // Adjust normalization for 75% Hann cola (factor of 1.5 with stft/istft).
+    // console.log("normalization: " +(2*((1-hopLength)/nFft)))
+    // let normalization = 2*((1-hopLength)/nFft)
+
     for (let i = 0; i < ifftWindow.length; i++) {
-        ifftWindow[i] = ifftWindow[i] / 1.5;
+        ifftWindow[i] = ifftWindow[i] / 0.7; //0.09569547896071921
     }
 
     // Pad the window to be the size of nFft. Only if nFft != winLength.
-    ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
+    if(nFft !== winLength)
+        ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
 
-    // Pre-allocate the audio output.
     const expectedSignalLen = nFft + hopLength * (nFrames - 1);
 
+    console.log("expectedSignalLen", expectedSignalLen, nFrames)
     const istftResult = new Float32Array(expectedSignalLen);
 
+
     // Perform inverse ffts and extract it from tensor as an array
-    let irfft = complex.irfft().arraySync()
+    let irfftTF = complex.irfft()
 
-    //let ifft = complex.ifft();
+    // complex.print(true)
 
-    // let real = tf.real(complex)
-    // let imag = tf.imag(complex)
-    //
-    // let reIm = interleaveReIm(real, imag)
+    let irfft = irfftTF.arraySync()
 
-    // Apply Window to inverse ffts
+    let res = tf.mul(irfftTF, ifftWindowTF).arraySync()
+
+    /**
+     * ------Continues
+     */
+
+    // Apply Window to inverse ffts -> apply add and overlap!
     for(let i = 0; i < nFrames - 1; i++){
-        const sample = i * hopLength;
-        let yTmp = irfft[i];
-        // let yTmp = reIm[i];
-        // let yTmp = ifft(reIm[i])
-        yTmp = applyWindow(yTmp, ifftWindow);
+        let sample = i * hopLength;
+        let yTmp = res[i];
+        // yTmp = tf.mul(yTmp, ifftWindow);
+        // yTmp = applyWindow(yTmp, ifftWindow);
         yTmp = add(yTmp, istftResult.slice(sample, sample + nFft));
         istftResult.set(yTmp, sample);
     }
+
     return istftResult
+
 }
 
 function enclosingPowerOfTwo(value) {
