@@ -39,7 +39,32 @@ let padSize = 0
 tf.enableProdMode()
 
 let counterChunk = 0;
+
+let win = readFile('../data/inverse_window')
+let ifftWindowTF = tf.tensor1d(win, "float32")
+
 //decodeFile(AUDIO_PATH);
+
+
+// let arrayBuffer = fs.readFileSync('../data/sin').toString('utf-8');
+// var jsonValues = JSON.parse(arrayBuffer);
+// var ch0 = Object.values(jsonValues);
+// let pre_ch0 = preProcessing(ch0)
+// let res0 = postprocessing(pre_ch0)
+// console.log("result length:", res0.length)
+// compileSong('sine_test.wav', [res0], 1, SAMPLE_RATE, '32f')
+
+let ch0 = readFile("../data/channel0")
+let ch1 = readFile("../data/channel1")
+
+let pre_ch0 = preProcessing(ch0)
+let pre_ch1 = preProcessing(ch1)
+
+let res0 = postprocessing(pre_ch0)
+let res1 = postprocessing(pre_ch1)
+
+compileSong('song_example.wav', [res0, res1], 2, SAMPLE_RATE, '32f')
+
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
@@ -226,7 +251,7 @@ function preProcessing(channel){
     let paddedChannel = [...channel, ...new Float32Array(pad)]
     padSize = pad
     console.log("shape of input after padding: " + paddedChannel.length)
-    const input = tf.tensor1d(paddedChannel) // Here there's a bug that makes the array lose precision
+    const input = tf.tensor1d(paddedChannel, "float32") // Here there's a bug that makes the array lose precision
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH, NFFT);
     // let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
@@ -341,7 +366,7 @@ function applyWindow(buffer, win) {
    }
  * @returns {Float32Array}
  */
-function istft(complex, params) {
+function istft(complex, params, param) {
     console.log(complex.shape)
 
     const nFrames = complex.shape[0];
@@ -349,21 +374,24 @@ function istft(complex, params) {
     const winLength = params.winLength || nFft;
     const hopLength = params.hopLength || Math.floor(winLength / 4);
 
-    let ifftWindowTF = tf.hannWindow(winLength);
+    // let ifftWindowTF = tf.hannWindow(winLength);
 
     let ifftWindow = ifftWindowTF.arraySync();
 
     // Adjust normalization for 75% Hann cola (factor of 1.5 with stft/istft).
-    // console.log("normalization: " +(2*((1-hopLength)/nFft)))
-    let normalization = 2*((1-hopLength)/nFft)
-
-    for (let i = 0; i < ifftWindow.length; i++) {
-        ifftWindow[i] = ifftWindow[i] / Math.abs(normalization); //0.09569547896071921
-    }
+    // console.log("normalization: " + param)
+    // let normalization = 2*((1-hopLength)/nFft)
+    //
+    // for (let i = 0; i < ifftWindow.length; i++) {
+    //     ifftWindow[i] = ifftWindow[i] / 1.5; //0.09569547896071921
+    // }
 
     // Pad the window to be the size of nFft. Only if nFft != winLength.
-    if(nFft !== winLength)
-        ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
+    // if(nFft !== winLength){
+        // console.log("here")
+    //ifftWindow = padCenterToLength(ifftWindow, nFft);// nFft
+    // }
+
 
     const expectedSignalLen = nFft + hopLength * (nFrames - 1);
 
@@ -372,21 +400,24 @@ function istft(complex, params) {
 
 
     // Perform inverse ffts and extract it from tensor as an array
+    // let irfftTF = complex.irfft().arraySync()
     let irfftTF = complex.irfft()
 
-   
-   
+    //Apply factor
+    let factor = tf.mul(ifftWindowTF, tf.tensor(1.0))
+
     // Apply window
-    let res = tf.mul(irfftTF, ifftWindowTF).arraySync()
+    let res = tf.mul(irfftTF, factor).arraySync()
 
     /**
      * ------Continues
      */
-
     // Apply Window to inverse ffts -> apply add and overlap!
     for(let i = 0; i < nFrames - 1; i++){
         let sample = i * hopLength;
+        // let yTmp = ifft(reIm[i]);
         let yTmp = res[i];
+        // let yTmp = irfftTF[i];
         // yTmp = tf.mul(yTmp, ifftWindow);
         // yTmp = applyWindow(yTmp, ifftWindow);
         yTmp = add(yTmp, istftResult.slice(sample, sample + nFft));
@@ -397,6 +428,40 @@ function istft(complex, params) {
 
 }
 
+
+function inverse_stft_window_fn(frame_step, frame_length, forward_window_fn = (f) => tf.hannWindow(f)){
+//     with ops.name_scope(name, 'inverse_stft_window_fn', [forward_window_fn]):
+//         frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
+//         frame_length.shape.assert_has_rank(0)
+
+//     # Use equation 7 from Griffin + Lim.
+//     forward_window = forward_window_fn(frame_length, dtype=dtype)
+//     denom = math_ops.square(forward_window)
+//     overlaps = -(-frame_length // frame_step)  # Ceiling division.
+//     denom = array_ops.pad(denom, [(0, overlaps * frame_step - frame_length)])
+//     denom = array_ops.reshape(denom, [overlaps, frame_step])
+//     denom = math_ops.reduce_sum(denom, 0, keepdims=True)
+//     denom = array_ops.tile(denom, [overlaps, 1])
+//     denom = array_ops.reshape(denom, [overlaps * frame_step])
+
+//     return forward_window / denom[:frame_length]
+// return inverse_stft_window_fn_inner
+    console.log(1)
+    const forward_window = forward_window_fn(frame_length)
+    console.log("uindou: ", forward_window)
+    let denom = tf.square(forward_window)
+   
+    const overlaps = Math.ceil(frame_length/frame_step) // -(-frame_length / frame_step) but js
+    console.log(overlaps)
+    denom.print(true)
+    denom = tf.pad(denom, [(0, overlaps * frame_step - frame_length)]) 
+    denom = tf.reshape([overlaps, frame_step])
+    denom = tf.sum(denom, 0, keepdims=true)
+    denom = tf.tile(denom, [overlaps, 1])
+    denom = tf.reshape(denom, [overlaps * frame_step])
+    return forward_window / denom.slice(0, frame_length)
+
+}
 function enclosingPowerOfTwo(value) {
     // Return 2**N for integer N such that 2**N >= value.
     return Math.floor(Math.pow(2, Math.ceil(Math.log(value) / Math.log(2.0))));

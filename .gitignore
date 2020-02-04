@@ -9,3 +9,4 @@ node_modules
 *.pb
 data
 extractor.py
+__pycache__
