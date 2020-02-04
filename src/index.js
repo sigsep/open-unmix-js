@@ -24,7 +24,7 @@ const PADDING = 8 // Padding for model prediction
 
 const path = 'http://localhost:5000/modelJs/model.json'
 const pb_path = "../model"
-const AUDIO_PATH = "../data/audio_example.mp3"
+const AUDIO_PATH = '../data/audio_example.mp3'
 // const AUDIO_PATH = "../data/Shallow_CUT.mp3"
 // const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
 
@@ -35,7 +35,7 @@ const ispecParams = {
     nFft: NFFT
 };
 
-
+let padSize = 0
 tf.enableProdMode()
 
 let counterChunk = 0;
@@ -88,12 +88,13 @@ function decodeFromBuffer2(buffer){ //TODO separate this
     decode(buffer, (err, audioBuffer) => {
 
         console.log(audioBuffer.length)
-
+        
+         
         const result0 = preProcessing(audioBuffer._channelData[0]);
         const result1 = preProcessing(audioBuffer._channelData[1]);
 
-        const istft0 = istft(result0, ispecParams)
-        const istft1 = istft(result1, ispecParams)
+        const istft0 = postprocessing(result0) //istft(result0, ispecParams)
+        const istft1 = postprocessing(result1)//istft(result1, ispecParams)
         console.log("Compiling song without model")
         compileSong('withoutModel.wav', [istft0, istft1], 2, SAMPLE_RATE, '32f')
 
@@ -221,7 +222,11 @@ async function loadAndPredict(path, resultSTFT){
  */
 function preProcessing(channel){
     console.log("Shape of input: " + channel.length)
-    const input = tf.tensor1d(channel) // Here there's a bug that makes the array lose precision
+    const pad = enclosingPowerOfTwo(channel.length) - channel.length
+    let paddedChannel = [...channel, ...new Float32Array(pad)]
+    padSize = pad
+    console.log("shape of input after padding: " + paddedChannel.length)
+    const input = tf.tensor1d(paddedChannel) // Here there's a bug that makes the array lose precision
     let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH, NFFT);
     // let resultSTFT = tf.signal.stft(input, FRAME_LENGTH, HOP_LENGTH);
     console.log("Shape after STFT: ", resultSTFT.shape)
@@ -232,17 +237,18 @@ function preProcessing(channel){
 //export { preProcessing };
 /**
  *
- * @param reImArray
+ * @param input
  * @returns {Float32Array}
  */
-function postprocessing(reImArray){
-    let resultISTFT = istft(reImArray, ispecParams);
+function postprocessing(input){
+    let resultISTFT = istft(input, ispecParams);
     console.log("Shape after ISTFT: ", resultISTFT.length)
+    let result = resultISTFT.slice(padSize)
+    console.log("Shape after slice: ", result.length)
+    // let resultMSE = mse(resultISTFT.slice(0, channel.length-1), channel);
+    // console.log('Channel data sets are different by ' + resultMSE);
 
-    let resultMSE = mse(resultISTFT.slice(0, channel.length-1), channel);
-    console.log('Channel data sets are different by ' + resultMSE);
-
-    return resultISTFT
+    return result
 }
 
 
@@ -349,10 +355,10 @@ function istft(complex, params) {
 
     // Adjust normalization for 75% Hann cola (factor of 1.5 with stft/istft).
     // console.log("normalization: " +(2*((1-hopLength)/nFft)))
-    // let normalization = 2*((1-hopLength)/nFft)
+    let normalization = 2*((1-hopLength)/nFft)
 
     for (let i = 0; i < ifftWindow.length; i++) {
-        ifftWindow[i] = ifftWindow[i] / 0.7; //0.09569547896071921
+        ifftWindow[i] = ifftWindow[i] / Math.abs(normalization); //0.09569547896071921
     }
 
     // Pad the window to be the size of nFft. Only if nFft != winLength.
@@ -368,10 +374,9 @@ function istft(complex, params) {
     // Perform inverse ffts and extract it from tensor as an array
     let irfftTF = complex.irfft()
 
-    // complex.print(true)
-
-    let irfft = irfftTF.arraySync()
-
+   
+   
+    // Apply window
     let res = tf.mul(irfftTF, ifftWindowTF).arraySync()
 
     /**
@@ -482,3 +487,4 @@ exports.preProcessing = preProcessing;
 exports.istft = istft;
 exports.compileSong = compileSong;
 exports.decodeFile = decodeFile;
+exports.postprocessing = postprocessing

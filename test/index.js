@@ -23,15 +23,15 @@ const AUDIO_PATH = 'data/audio_example.mp3'
 
 // STFT  test
 describe('Signal -> STFT -> ISTFT -> Signal', function() {
-    it('should return an error lower then 10e-6', function() {
+    it('should return an error lower than 10e-6', function() {
         this.enableTimeouts(false)
         //32768 2^15
-        const real = tf.randomNormal([1048576]).arraySync(); //2^15
+        const real = tf.randomNormal([100000]).arraySync(); //2^15
         const tensor = tf.tensor1d(real)
 
-        const testSignal = tf.signal.stft(tensor, FRAME_LENGTH, HOP_LENGTH, FFT_SIZE)
+        const testSignal = code.preProcessing(real)//tf.signal.stft(tensor, FRAME_LENGTH, HOP_LENGTH, FFT_SIZE)
 
-        let preProcessedSignal = code.istft(testSignal, specParams);
+        let preProcessedSignal = code.postprocessing(testSignal) //code.istft(testSignal, specParams).slice(padSize);
 
         console.log("Real and preProcessedSignal: " + real.length, preProcessedSignal.length)
 
