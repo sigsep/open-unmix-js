@@ -42,30 +42,31 @@ tf.enableProdMode()
 
 let counterChunk = 0;
 
-// let win = readFile('../data/inverse_window')
-// let ifftWindowTF = tf.tensor1d(win, "float32")
+//let win = readFile('../data/inverse_window')
+//let ifftWindowTF = tf.tensor1d(win, "float32")
 //
 // decodeFile(AUDIO_PATH);
 
+let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
 
-// let arrayBuffer = fs.readFileSync('../data/sin').toString('utf-8');
+// let arrayBuffer = fs.readFileSync('C:/Users/Clara/Documents/Polytech/IG5_9/pfe/umx.js-pfe/data/sin').toString('utf-8');
 // var jsonValues = JSON.parse(arrayBuffer);
 // var ch0 = Object.values(jsonValues);
-// let pre_ch0 = preProcessing(ch0)
-// let res0 = postProcessing(pre_ch0)
+// let pre_ch0 = preProcessing(ch0,ispecParams)
+// let res0 = postProcessing(pre_ch0, ispecParams,1, ifftWindowTF)
 // console.log("result length:", res0.length)
-// compileSong('sine_test.wav', [res0], 1, SAMPLE_RATE, '32f')
+// compileSong('test.wav', [res0], 1, SAMPLE_RATE, '32f')
 
-// let ch0 = readFile("../data/channel0")
-// let ch1 = readFile("../data/channel1")
-//
-// let pre_ch0 = preProcessing(ch0)
-// let pre_ch1 = preProcessing(ch1)
-//
-// let res0 = postProcessing(pre_ch0)
-// let res1 = postProcessing(pre_ch1)
-//
-// compileSong('song_example.wav', [res0, res1], 2, SAMPLE_RATE, '32f')
+let ch0 = readFile("../data/channel0")
+let ch1 = readFile("../data/channel1")
+
+let pre_ch0 = preProcessing(ch0,ispecParams)
+let pre_ch1 = preProcessing(ch1,ispecParams)
+
+let res0 = postProcessing(pre_ch0,ispecParams,1,ifftWindowTF)
+let res1 = postProcessing(pre_ch1,ispecParams,1,ifftWindowTF)
+
+compileSong('song_example.wav', [res0, res1], 2, SAMPLE_RATE/2, '32f')
 
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
@@ -297,32 +298,6 @@ function createInput(res0, res1, slice_start){
     let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
     return {"model_input":model_input, "mix_angle":mix_angle}
 
-    // let pad =tf.zeros([PADDING,FREQUENCES], 'complex64')
-    //
-    // let paddedRes0 = tf.concat([pad,res0.slice([slice_start,0], [FRAMES-PADDING, FREQUENCES]),pad])
-    // let paddedRes1 = tf.concat([pad,res1.slice([slice_start,0], [FRAMES-PADDING, FREQUENCES]),pad])
-    //
-    // const model_input = tf.tidy(() => {
-    //     let absChannel0 = tf.abs(paddedRes0)
-    //     let absChannel1 = tf.abs(paddedRes1)
-    //     return tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
-    // });
-    //
-    // const mix_stft = tf.tidy(() => {
-    //     return tf.stack([res0, res1]).transpose([1, 0, 2]).expandDims(1)
-    //     // return tf.stack([paddedRes0, paddedRes1]).transpose([1, 0, 2]).expandDims(1)
-    // })
-    //
-    // const mix_angle = tf.tidy(() => {
-    //     return tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
-    // });
-    //
-    // mix_stft.dispose()
-    // pad.dispose()
-    // paddedRes0.dispose()
-    // paddedRes1.dispose()
-    // return {"model_input":model_input, "mix_angle":mix_angle}
-
 }
 
 /**
@@ -357,19 +332,6 @@ function padCenterToLength(data, length) {
     const paddingLeft = Math.floor((length - data.length) / 2);
     const paddingRight = length - data.length - paddingLeft;
     return padConstant(data, [paddingLeft, paddingRight]);
-}
-
-// TODO remove
-// export function applyWindow(buffer: Float32Array, win: Float32Array) {
-function applyWindow(buffer, win) {
-    if (buffer.length !== win.length) {
-        throw new Error(`Buffer length ${buffer.length} != window length ${win.length}.`);
-    }
-    const out = new Float32Array(buffer.length);
-    for (let i = 0; i < buffer.length; i++) {
-        out[i] = win[i] * buffer[i];
-    }
-    return out;
 }
 
 /**
@@ -469,20 +431,16 @@ function inverse_stft_window_fn(frame_step, frame_length, forward_window_fn = (f
 
 //     return forward_window / denom[:frame_length]
 // return inverse_stft_window_fn_inner
-    console.log(1)
     const forward_window = forward_window_fn(frame_length)
-    console.log("uindou: ", forward_window)
+    
     let denom = tf.square(forward_window)
-
     const overlaps = Math.ceil(frame_length/frame_step) // -(-frame_length / frame_step) but js
-    console.log(overlaps)
-    denom.print(true)
-    denom = tf.pad(denom, [(0, overlaps * frame_step - frame_length)])
-    denom = tf.reshape([overlaps, frame_step])
+    denom = tf.pad(denom, [[0, overlaps * frame_step - frame_length]]) 
+    denom =  denom.reshape([overlaps, frame_step])
     denom = tf.sum(denom, 0, keepdims=true)
     denom = tf.tile(denom, [overlaps, 1])
-    denom = tf.reshape(denom, [overlaps * frame_step])
-    return forward_window / denom.slice(0, frame_length)
+    denom = denom.reshape([overlaps * frame_step])
+    return tf.div(forward_window, denom.slice(0, frame_length))//forward_window / denom.slice(0, frame_length)
 
 }
 
