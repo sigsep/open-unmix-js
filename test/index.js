@@ -2,6 +2,7 @@ const assert = require('assert');
 const tf = require('@tensorflow/tfjs-node');
 const code = require('../src/index')
 const mse = require('mse');
+const fs = require('fs');
 
 const wv = require('wavefile');
 const decode = require('audio-decode');
@@ -56,7 +57,25 @@ describe('Music -> STFT -> ISTFT -> Music', function() {
                     let processedSignal0 = code.postProcessing(stftMusic0, specParams, 1.0, ifftWindowTF);
                     let processedSignal1 = code.postProcessing(stftMusic1, specParams, 1.0, ifftWindowTF);
 
-                    code.compileSong('resultSong.wav', [processedSignal0, processedSignal1], 2, 44100, '32f')
+                    let diff = audioBuffer._channelData[0].length - processedSignal0.length
+                    let padDiff = new Float32Array(diff)
+
+                    //Insert zeros in front of processed signal to be as exact size as the original one
+                    processedSignal0 = [...processedSignal0, ...padDiff]
+                    processedSignal1 = [...processedSignal1, ...padDiff]
+
+
+                    let resultMSE0 = mse(audioBuffer._channelData[0], processedSignal0);
+                    let resultMSE1 = mse(audioBuffer._channelData[1], processedSignal1);
+
+                    console.log("MSE: ", resultMSE0, resultMSE1)
+
+                    let wav = new wv.WaveFile();
+
+                    wav.fromScratch(2, 44100, '32f', [processedSignal0, processedSignal1]);
+
+                    fs.writeFileSync('exampleCorrect.wav', wav.toBuffer());
+
                 })
             })
     });
