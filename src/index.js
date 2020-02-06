@@ -4,12 +4,10 @@
 const DEBUG = false
 
 const tf = require('@tensorflow/tfjs-node');
-const fs = require('fs');
-const mse = require('mse');
-const wv = require('wavefile');
-const decode = require('audio-decode');
-const Lame = require("node-lame").Lame;
-const FFT = require("fft.js");
+const fs = require('fs'); //Still used to test songs TODO must remove
+
+const decode = require('audio-decode'); // TODO remove to use only browser supported functions
+const Lame = require("node-lame").Lame; // TODO remove
 
 const FRAME_LENGTH = 2048
 const HOP_LENGTH = 1024
@@ -24,8 +22,8 @@ const N_CHANNELS = 2
 const N_BATCHES = 1
 const PADDING = 8 // Padding for model prediction
 
-const path = 'http://localhost:5000/modelJs/model.json'
-const pb_path = "../model"
+const path_ = 'http://localhost:5000/modelJs/model.json'
+const pb_path = "model"
 const AUDIO_PATH = '../data/audio_example.mp3'
 // const AUDIO_PATH = "../data/Shallow_CUT.mp3"
 // const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
@@ -37,57 +35,14 @@ const ispecParams = {
     nFft: NFFT
 };
 
-let padSize = 0
 tf.enableProdMode()
 
-let counterChunk = 0;
-
-//let win = readFile('../data/inverse_window')
-//let ifftWindowTF = tf.tensor1d(win, "float32")
-//
-// decodeFile(AUDIO_PATH);
-
 let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
-
-// let arrayBuffer = fs.readFileSync('C:/Users/Clara/Documents/Polytech/IG5_9/pfe/umx.js-pfe/data/sin').toString('utf-8');
-// var jsonValues = JSON.parse(arrayBuffer);
-// var ch0 = Object.values(jsonValues);
-// let pre_ch0 = preProcessing(ch0,ispecParams)
-// let res0 = postProcessing(pre_ch0, ispecParams,1, ifftWindowTF)
-// console.log("result length:", res0.length)
-// compileSong('test.wav', [res0], 1, SAMPLE_RATE, '32f')
-
-let ch0 = readFile("../data/channel0")
-let ch1 = readFile("../data/channel1")
-
-let pre_ch0 = preProcessing(ch0,ispecParams)
-let pre_ch1 = preProcessing(ch1,ispecParams)
-
-let res0 = postProcessing(pre_ch0,ispecParams,1,ifftWindowTF)
-let res1 = postProcessing(pre_ch1,ispecParams,1,ifftWindowTF)
-
-compileSong('song_example.wav', [res0, res1], 2, SAMPLE_RATE/2, '32f')
-
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
 /**
- *
- * @param outputPath
- * @param channels [[channel1],[channel2]]
- * @param nbChannels
- * @param sampleRate
- * @param bitDepthCode
- */
-function compileSong(outputPath, channels, nbChannels, sampleRate, bitDepthCode){
-    let wav = new wv.WaveFile();
-    let output = new Float32Array(channels[0], channels[1])
-    wav.fromScratch(nbChannels, sampleRate, bitDepthCode, output);
-    fs.writeFileSync(outputPath, wav.toBuffer());
-}
-
-/**
- *
+ * Returns decoded file as buffer
  * @param path
  * @return buffer to process
  */
@@ -112,96 +67,64 @@ async function decodeFile(path){
 }
 
 
-function decodeFromBuffer2(buffer){ //TODO separate this
-    decode(buffer, (err, audioBuffer) => {
-
-        console.log(audioBuffer.length)
-
-
-        const result0 = preProcessing(audioBuffer._channelData[0], ispecParams);
-        const result1 = preProcessing(audioBuffer._channelData[1], ispecParams);
-
-        const istft0 = postProcessing(result0, ispecParams, 1.0, ifftWindowTF) //istft(result0, ispecParams)
-        const istft1= postProcessing(result1, ispecParams, 1.0, ifftWindowTF) //istft(result0, ispecParams)
-        console.log("Compiling song without model")
-        compileSong('alface.wav', [istft0, istft1], 2, SAMPLE_RATE, '32f')
-
+/**
+ * Decode the buffer to float32Array with expected channels
+ * @param buffer
+ * @return AudioBuffer{
+ *     length,
+ *     numberOfChannels
+ *     sampleRate,
+ *     duration
+ *     _data:[]
+ *     _channelData[numberOfChannels]
+ * }
+ */
+async function decodeFromBuffer(buffer){
+    return decode(buffer, (err, audioBuffer) => {
+        return audioBuffer
     });
 }
-
-
 
 /**
- *
- * @param buffer
+ * Insert zeros in the beginning and end of signal
+ * to recreate exactly the original song
+ * @param signal
+ * @param processedLength
+ * @param originalLength
+ * @param specParams
  */
-function decodeFromBuffer(buffer){ //TODO separate this
-    decode(buffer, (err, audioBuffer) => {
-
-        console.log("Buffer length: " + audioBuffer.length)
-        const numPatches = Math.floor(Math.floor((audioBuffer.length - 1) / HOP_LENGTH) / PATCH_LENGTH) + 1;
-
-        console.log("Num patches " + numPatches)
-        // console.log(numPatches,(numPatches * PATCH_LENGTH * HOP_LENGTH), PATCH_LENGTH * HOP_LENGTH)
-        let start = 0
-        let channel0_stem = [];
-        let channel1_stem = [];
-        let chunk = Math.floor(audioBuffer.length / numPatches)
-        let end = chunk
-        console.log("chunk ", chunk)
-        for (let i = 0; i < numPatches; i++) {
-            console.log("Start processing chunk: "+i)
-            const result0 = preProcessing(audioBuffer._channelData[0].slice(start, end));
-            const result1 = preProcessing(audioBuffer._channelData[1].slice(start, end));
-            loadAndPredict(path, [result0, result1])
-                .then(arr => {
-
-                channel0_stem[i] = arr[0];
-                channel1_stem[i] = arr[1];
-
-                if(counterChunk === numPatches - 1){
-                    console.log("Compiling song")
-                    compileSong('newModelTest.wav', [channel0_stem.flat(), channel1_stem.flat()], 2, SAMPLE_RATE, '32f')
-                }
-                counterChunk++
-                result0.dispose()
-                result1.dispose()
-            })
-            console.log("End processing chunk: "+i)
-            start+=chunk+1
-            end = start+chunk
-        }
-
-    });
+function insertZeros(signal, processedLength, originalLength, specParams){
+    let diff = processedLength - originalLength
+    let padDiff = new Float32Array(specParams.fftLength + 208) // 208 magic number
+    let padDiffEnd = new Float32Array(176) //176 is a magic number
+    //Insert zeros in front of processed signal to be as exact size as the original one
+    return signal = [...padDiff, ...signal, ...padDiffEnd]
 }
-
 
 /**
  *
  * @param path
  * @param resultSTFT
+ * @param specParams
  * @returns {Promise<[][]>}
  */
-async function loadAndPredict(path, resultSTFT){
-
+async function loadAndPredict(path, resultSTFT, specParams){ //Update this
     // model load
-    const model = await tf.node.loadSavedModel(pb_path);
-    //const model = await tf.loadGraphModel(path);
+    // const model = await tf.node.loadSavedModel(pb_path);
+    const model = await tf.loadGraphModel(path_);
     let result = [[],[]]
 
     let number_of_frames = resultSTFT[0].shape[0]
-
-    console.log("Number of frames", number_of_frames)
 
     //Fill with zeros
     if(number_of_frames < FRAMES){
         let fillZeros = FRAMES - number_of_frames
         let pad =tf.zeros([fillZeros,FREQUENCES], 'complex64')
-        resultSTFT[0] = tf.concat([resultSTFT[0],pad])
-        resultSTFT[1] = tf.concat([resultSTFT[1],pad])
+        resultSTFT[0] = tf.concat([pad,resultSTFT[0]])
+        resultSTFT[1] = tf.concat([pad,resultSTFT[1]])
     }
     //for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
-    // for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
+    //for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
         let input = createInput(resultSTFT[0], resultSTFT[1], 0)
         // prediction
         const output = tf.tidy(() => {
@@ -231,9 +154,9 @@ async function loadAndPredict(path, resultSTFT){
         // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
         let estimateReshaped = estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
 
-        let res0 = istft(estimateReshaped[0], ispecParams)
-        let res1 = istft(estimateReshaped[1], ispecParams)
-
+        let res0 = postProcessing(estimateReshaped[0], specParams, 1.0)
+        let res1 = postProcessing(estimateReshaped[1], specParams, 1.0)
+        //
 
         // Push into result 2 channels
         result = [[...result[0],...res0], [...result[1],...res1]]
@@ -250,15 +173,12 @@ async function loadAndPredict(path, resultSTFT){
  * @returns A Float32Array that should be similar to the original channel
  */
 function preProcessing(channel, specParams){
-    console.log("Shape of input: " + channel.length)
-    const pad = enclosingPowerOfTwo(channel.length) - channel.length
-    let paddedChannel = [...channel, ...new Float32Array(pad)]
-    padSize = pad
-    console.log("shape of input after padding: " + paddedChannel.length)
+    let input = tf.tensor1d(channel, "float32");
 
-    // const input = tf.tensor1d(paddedChannel, "float32") // Here there's a bug that makes the array lose precision
-    const input = tf.tensor1d(channel, "float32") // Here there's a bug that makes the array lose precision
+    // Pad the signal for soft beginning
+    input = padSignal(input, specParams, true);
 
+    // Perform stft
     let resultSTFT = tf.signal.stft(
         input,
         specParams.winLength,
@@ -267,37 +187,97 @@ function preProcessing(channel, specParams){
     );
 
     if (DEBUG) console.log("Shape after STFT: ", resultSTFT.shape)
+
     return resultSTFT
+}
+
+/**
+ * Pad the signal for song soft beginning
+ * @param signal
+ * @param specParams
+ * @param forward insert or remove pad
+ * @returns Float32Array with padded signal
+ */
+function padSignal(signal, specParams, forward){
+    let pad = 2 * (specParams.fftLength - specParams.hopLength)
+    pad = Math.floor(pad/2)
+    //Insert padding
+    if(forward){
+        signal = tf.pad(signal, [[pad, pad]])
+        if (DEBUG) console.log("[Preprocessing] Size after padding: " + signal.shape)
+        return signal
+    }else{
+        signal = tf.slice(signal, [pad], [(signal.shape - pad)])
+        if (DEBUG) console.log("[Postprocessing] Size after padding: " + signal.shape)
+        return signal
+    }
+
 }
 
 
 /**
  *
  * @param input
+ * @param specParams
+ * @param factor
  * @returns {Float32Array}
  */
-function postProcessing(input, specParams, factor, win){
-    let resultISTFT = istft(input, specParams, factor, win);
+function postProcessing(input, specParams, factor){
+    let resultISTFT = istft(input, specParams, factor);
     if (DEBUG) console.log("Shape after ISTFT: ", resultISTFT.length)
-    let result = resultISTFT.slice(padSize)
-    if (DEBUG) console.log("Shape after slice: ", result.length)
+    let signal = tf.tensor1d(resultISTFT)
+    signal = padSignal(signal, specParams, false)
+
     // let resultMSE = mse(resultISTFT.slice(0, channel.length-1), channel);
     // console.log('Channel data sets are different by ' + resultMSE);
 
-    return resultISTFT
+    return signal.arraySync()
 }
 
-
+/**
+ * Creates input to the model
+ * @param res0
+ * @param res1
+ * @param slice_start
+ * @returns {{mix_angle: *, model_input: *}}
+ */
 function createInput(res0, res1, slice_start){
     let absChannel0 = tf.abs(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
     let absChannel1 = tf.abs(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
     const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+
     let chan0 = res0.slice([slice_start,0], [FRAMES, FREQUENCES])
     let chan1 = res1.slice([slice_start,0], [FRAMES, FREQUENCES])
+
     const mix_stft = tf.stack([chan0, chan1]).transpose([1, 0, 2]).expandDims(1)
     let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
     return {"model_input":model_input, "mix_angle":mix_angle}
 
+    // let pad =tf.zeros([PADDING,FREQUENCES], 'complex64')
+    //
+    // let paddedRes0 = tf.concat([pad,res0.slice([slice_start,0], [FRAMES-PADDING, FREQUENCES]),pad])
+    // let paddedRes1 = tf.concat([pad,res1.slice([slice_start,0], [FRAMES-PADDING, FREQUENCES]),pad])
+    //
+    // const model_input = tf.tidy(() => {
+    //     let absChannel0 = tf.abs(paddedRes0)
+    //     let absChannel1 = tf.abs(paddedRes1)
+    //     return tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+    // });
+    //
+    // const mix_stft = tf.tidy(() => {
+    //     return tf.stack([res0, res1]).transpose([1, 0, 2]).expandDims(1)
+    //     // return tf.stack([paddedRes0, paddedRes1]).transpose([1, 0, 2]).expandDims(1)
+    // })
+    //
+    // const mix_angle = tf.tidy(() => {
+    //     return tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
+    // });
+    //
+    // mix_stft.dispose()
+    // pad.dispose()
+    // paddedRes0.dispose()
+    // paddedRes1.dispose()
+    // return {"model_input":model_input, "mix_angle":mix_angle}
 }
 
 /**
@@ -347,23 +327,12 @@ function padCenterToLength(data, length) {
    }
  * @returns {Float32Array} reconstructed signal
  */
-function istft(complex, params, factor, ifftWindowTF) {
+function istft(complex, params, factor) {
     const winFactor = factor || 1.0;
     const nFrames = complex.shape[0];
     const nFft = params.nFft || enclosingPowerOfTwo(complex.shape[1]);
     const winLength = params.winLength || nFft;
     const hopLength = params.hopLength || Math.floor(winLength / 4);
-
-    console.log(complex.shape)
-    // let ifftWindowTF0 = tf.hannWindow(winLength); //TODO fix to use the inverse windowing function
-
-    //complex.print(true)
-
-    // let pad = tf.zeros([shape0Pad,shape1Pad], 'complex64')
-    // console.log(pad.shape)
-    //
-    // let paddedRes0 = tf.concat([pad,res0.slice([0,0], [FRAMES-PADDING, FREQUENCES])])
-
 
     // Pad the window to be the size of nFft. Only if nFft != winLength.
     // In our case we dont need to pad since nFfft != winLength (always)
@@ -381,26 +350,12 @@ function istft(complex, params, factor, ifftWindowTF) {
     // Perform inverse ffts
     let irfftTF = complex.irfft()
 
-    console.log("irrftShape " + irfftTF.shape)
-
-    //Padding part
-    let shape0Pad = enclosingPowerOfTwo(irfftTF.shape[0]) - irfftTF.shape[0]
-    let shape1Pad = enclosingPowerOfTwo(irfftTF.shape[1]) - irfftTF.shape[1]
-
-    console.log("Paddings: " + shape0Pad, shape1Pad)
-
-    // irfftTF = tf.pad2d(irfftTF, [[0,shape0Pad],[0, shape1Pad]])
-
-    console.log("irrftShape after padding " + irfftTF.shape)
-
     // Adjust normalization for 2096/1024 (factor of 1.0 with stft/istft)
     // used by the model
     let normalizationFactor = tf.mul(ifftWindowTF, tf.tensor(winFactor));
 
     // Apply squared window
     let res = tf.mul(irfftTF, normalizationFactor).arraySync();
-
-    console.log(nFrames, irfftTF.shape[0])
 
     // Overlap and add function (adds potentially overlapping frames of a signal)
     for(let i = 0; i < nFrames; i++){
@@ -413,35 +368,23 @@ function istft(complex, params, factor, ifftWindowTF) {
     return istftResult
 }
 
-
+/**
+ *
+ * @param frame_step
+ * @param frame_length
+ * @param forward_window_fn
+ * @returns {Tensor}
+ */
 function inverse_stft_window_fn(frame_step, frame_length, forward_window_fn = (f) => tf.hannWindow(f)){
-//     with ops.name_scope(name, 'inverse_stft_window_fn', [forward_window_fn]):
-//         frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
-//         frame_length.shape.assert_has_rank(0)
-
-//     # Use equation 7 from Griffin + Lim.
-//     forward_window = forward_window_fn(frame_length, dtype=dtype)
-//     denom = math_ops.square(forward_window)
-//     overlaps = -(-frame_length // frame_step)  # Ceiling division.
-//     denom = array_ops.pad(denom, [(0, overlaps * frame_step - frame_length)])
-//     denom = array_ops.reshape(denom, [overlaps, frame_step])
-//     denom = math_ops.reduce_sum(denom, 0, keepdims=True)
-//     denom = array_ops.tile(denom, [overlaps, 1])
-//     denom = array_ops.reshape(denom, [overlaps * frame_step])
-
-//     return forward_window / denom[:frame_length]
-// return inverse_stft_window_fn_inner
     const forward_window = forward_window_fn(frame_length)
-    
     let denom = tf.square(forward_window)
     const overlaps = Math.ceil(frame_length/frame_step) // -(-frame_length / frame_step) but js
-    denom = tf.pad(denom, [[0, overlaps * frame_step - frame_length]]) 
+    denom = tf.pad(denom, [[0, overlaps * frame_step - frame_length]])
     denom =  denom.reshape([overlaps, frame_step])
     denom = tf.sum(denom, 0, keepdims=true)
     denom = tf.tile(denom, [overlaps, 1])
     denom = denom.reshape([overlaps * frame_step])
     return tf.div(forward_window, denom.slice(0, frame_length))//forward_window / denom.slice(0, frame_length)
-
 }
 
 /**
@@ -453,7 +396,12 @@ function enclosingPowerOfTwo(value) {
     return Math.floor(Math.pow(2, Math.ceil(Math.log(value) / Math.log(2.0))));
 }
 
-
+/**
+ * Add two arrays
+ * @param arr0
+ * @param arr1
+ * @returns {Float32Array|null}
+ */
 function add(arr0, arr1) {
     if (arr0.length !== arr1.length) {
         console.error(
@@ -467,27 +415,79 @@ function add(arr0, arr1) {
     return out;
 }
 
-function readFile(file) {
-    let arrayBuffer = fs.readFileSync(file).toString('utf-8');
-    let textByLine = arrayBuffer.split(" ");
+//https://stackoverflow.com/questions/29584420/how-to-manipulate-the-contents-of-an-audio-tag-and-create-derivative-audio-tags/30045041
+// TODO change this cuz theres copyright problems :(
+// Convert a audio-buffer segment to a Blob using WAVE representation
+function createWave(outputBuffer, path) {
+    const length = outputBuffer.channelData[0].length * 2 * 2 + 44;
+    const buffer = new ArrayBuffer(length);
+    const view = new DataView(buffer);
+    let pos = 0;
 
-    let floatArray = new Float32Array(textByLine.length - 1) // -1 cuz the last value is NaN
+    // write WAVE header
+    setUint32(0x46464952);                         // "RIFF"
+    setUint32(length - 8);                         // file length - 8
+    setUint32(0x45564157);                         // "WAVE"
 
-    let stringToFloatArray = textByLine.map(function(c) {
-        return parseFloat(c).toPrecision(16);
+    setUint32(0x20746d66);                         // "fmt " chunk
+    setUint32(16);                                 // length = 16
+    setUint16(1);                                  // PCM (uncompressed)
+    setUint16(2); // numOfChan);
+    setUint32(outputBuffer.sampleRate);
+    setUint32(outputBuffer.sampleRate * 2 * outputBuffer.numberOfChannels); //abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+    setUint16(2 * outputBuffer.numberOfChannels); // numOfChan * 2);                      // block-align
+    setUint16(16);                                 // 16-bit (hardcoded in this demo)
+
+    setUint32(0x61746164);                         // "data" - chunk
+    setUint32(length - pos - 4);                   // chunk length
+
+    // write interleaved data
+    let offset = 0;
+    while(pos < length) {
+        for(let ch = 0; ch < 2; ch++) {             // interleave channels
+            let sample = Math.max(-1, Math.min(1, outputBuffer.channelData[ch][offset])); // 必要ないはずだけど念のため clamp
+            sample = ((sample < 0) ? sample * 0x8000 : sample * 0x7fff) | 0; // scale to 16-bit signed int
+            view.setInt16(pos, sample, true);          // write 16-bit sample
+            pos += 2;
+        }
+        offset++;                                     // next source sample
+    }
+
+    // create Blob
+
+    //used by node
+    let buff = new Buffer.from(buffer)
+    fs.open(path, 'w', function(err, fd) {
+        if (err) {
+            throw 'error opening file: ' + err;
+        }
+        fs.write(fd, buff, 0, buff.length, null, function(err) {
+            if (err) throw 'error writing file: ' + err;
+            fs.close(fd, function() {
+                console.log('file written');
+            })
+        });
     });
 
-    stringToFloatArray = stringToFloatArray.slice(0, -1); // Remove the last element NaN
+    //used by pure js
+    // return new Blob([buffer], {type: "audio/wav"});
 
+    function setUint16(data) {
+        view.setUint16(pos, data, true);
+        pos += 2;
+    }
 
-    floatArray = stringToFloatArray;
-
-    return floatArray;
+    function setUint32(data) {
+        view.setUint32(pos, data, true);
+        pos += 4;
+    }
 }
 
 exports.preProcessing = preProcessing;
 exports.istft = istft;
-exports.compileSong = compileSong;
 module.exports.decodeFile = decodeFile;
 exports.postProcessing = postProcessing;
-exports.readFile = readFile;
+exports.decodeFromBuffer = decodeFromBuffer
+exports.createWave = createWave
+exports.insertZeros = insertZeros
+exports.loadAndPredict = loadAndPredict
