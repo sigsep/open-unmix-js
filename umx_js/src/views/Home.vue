@@ -5,28 +5,38 @@
     <vue-dropzone 
       id="drop" 
       :options="dropOptions"
+      @vdropzone-file-added="renderAudioTag"
       @vdropzone-complete="loadFile"
     ></vue-dropzone>
-
-    <vue-wave-surfer :src="file" :options="waveSurferOptions"></vue-wave-surfer>
     
-    <v-row no-gutters>
-        <v-select v-if="tracks.length > 1"
-          :dark="dark"
-          v-model="selectedTrack"
-          class="select"
-          :items="tracks"
-          light
-          label="Select track to separate"
-        ></v-select>
-      <Player :ref="player" :urls="tracklist" :dark="dark"></Player>
-      <v-layout
-        align-center
-        justify-center
-        style="background: red;"
-      >
-      </v-layout>
-    </v-row>
+    <div v-if="shouldRenderSong">
+      <!-- <vue-wave-surfer :src="file" :options="waveSurferOptions"></vue-wave-surfer> -->
+      <audio ref="ogAudio" controls>
+        <p>Your browser does not have the <code>audio</code> tag</p>
+      </audio>
+
+      <button @click="process">Process song</button>
+    </div>
+
+    <div v-if="shouldRenderPlayer">
+      <v-row no-gutters>
+          <v-select v-if="tracks.length > 1"
+            :dark="dark"
+            v-model="selectedTrack"
+            class="select"
+            :items="tracks"
+            light
+            label="Select track to separate"
+          ></v-select>
+        <Player :ref="player" :urls="tracklist" :dark="dark"></Player>
+        <v-layout
+          align-center
+          justify-center
+          style="background: red;"
+        >
+        </v-layout>
+      </v-row>
+    </div>
 
   </v-container>    
   </v-app>
@@ -36,11 +46,12 @@
 import vueDropzone from "vue2-dropzone";
 import Player from './../components/Player.vue'
 import axios from 'axios'
-import VueWaveSurfer from 'vue-wave-surfer'
+import {foo} from './../lib/a.js'
+// import VueWaveSurfer from 'vue-wave-surfer' //remember to put it in components again
 
 export default {
   name: 'Home',
-  components: { Player, vueDropzone, VueWaveSurfer },
+  components: { Player, vueDropzone },
   data () {
     return {
       dropOptions: {
@@ -49,19 +60,21 @@ export default {
         maxFiles: 1,
         //chunking: true,
         //chunkSize: 500, // Bytes
-        thumbnailWidth: 150, // px
-        thumbnailHeight: 150,
+        //thumbnailWidth: 150, // px
+        //thumbnailHeight: 150,
         addRemoveLinks: true
       },
       waveSurferOptions: {
 
       },
-      file: 'file://C:\\Users\\Clara\\Documents\\Polytech\\IG5_9\\pfe\\umx.js-pfe\\data\\audio_example.mp3',
+      fileURL: "",
       dark: false,
       tracks: [],
       stems: [],
       selectedTrack: '',
-      baseUrl: process.env.BASE_URL
+      baseUrl: process.env.BASE_URL,
+      shouldRenderPlayer: false,
+      shouldRenderSong: false
     }
   },
   mounted: function () {
@@ -79,10 +92,23 @@ export default {
         this.dark = response.data.dark
      })
     },
+    /* eslint-disable */
+    renderAudioTag(file){
+       this.shouldRenderSong = true
+    },
+    /* eslint-enable */
+
     loadFile: function(file) {
       let blob = window.URL || window.webkitURL;
-      let fileURL = blob.createObjectURL(file);   
-      console.log(fileURL)  
+      this.fileURL = blob.createObjectURL(file);   
+      this.$refs.ogAudio.src = this.fileURL
+     
+    },
+
+    process(){
+     
+      foo("foo")
+     
     }
   },
   computed: {
