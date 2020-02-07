@@ -207,7 +207,7 @@ function preProcessing(channel, specParams){
     let input = tf.tensor1d(channel, "float32");
 
     // Pad the signal for soft beginning
-    input = padSignal(input, specParams, true);
+    input = padSignal(input, specParams, true); //multiple of 1024 (hop_size/frame_size?)
 
     // Perform stft
     let resultSTFT = tf.signal.stft(
