@@ -54,7 +54,7 @@ export default {
      
       shouldRenderPlayer: false,
       shouldRenderSong: false,
-       dark: true,
+       dark: false,
       player: null,
       combKey: 42,
       showPlayer: false,
@@ -75,6 +75,7 @@ export default {
           // },
           ]
       },
+      publicPath: process.env.BASE_URL,
       trackstoload: [],
       tracklist: []
     }
@@ -100,22 +101,26 @@ export default {
     },
 
     processSong(){
-      let blob = window.URL || window.webkitURL;
-      let song = modelProcess()
-      this.shouldRenderPlayer = true
-      this.combKey = Math.ceil(Math.random() * 10000)
-    
-      let trackstoload = []
-      //for (let stem of this.playerconf.streams) {
-        trackstoload.push(
-            { 'name': "vocals",//stem.name,
-              'customClass': "vocals",//stem.name,
-              'solo': false,
-              'mute': false,
-              'src': blob.createObjectURL(song)//stem.url
-          })
-      //}
-      this.tracklist = trackstoload
+      
+      modelProcess(this.publicPath).then((song) => 
+        {
+          console.log(song)
+          this.shouldRenderPlayer = true
+          this.combKey = Math.ceil(Math.random() * 10000)
+          let blob = window.URL || window.webkitURL;
+          let trackstoload = []
+          //for (let stem of this.playerconf.streams) {
+            trackstoload.push(
+                { 'name': "vocals",//stem.name,
+                  'customClass': "vocals",//stem.name,
+                  'solo': false,
+                  'mute': false,
+                  'src': blob.createObjectURL(song)//stem.url
+              })
+          //}
+          this.tracklist = trackstoload}
+      )
+      
     }
   },
   computed: {
