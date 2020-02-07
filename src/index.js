@@ -32,7 +32,7 @@ const AUDIO_PATH = '../data/audio_example.mp3'
 const ispecParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
-    nFft: NFFT
+    fftLength: NFFT
 };
 
 tf.enableProdMode()

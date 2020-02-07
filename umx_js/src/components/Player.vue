@@ -1,9 +1,10 @@
 <template>
   <div id='player'>
+    
     <div>
+      <h2>{{title}}</h2>
     <v-btn
-      :dark="dark"
-      fab
+      :dark="conf.dark"
       color="green accent-2"
       top
       right
@@ -15,8 +16,7 @@
       <v-icon>mdi-play</v-icon>
     </v-btn>
     <v-btn
-      fab
-      :dark="dark"
+      :dark="conf.dark"
       color="red accent-2"
       top
       right
@@ -28,10 +28,10 @@
     </v-btn>
     </div>
     
-    <div id="playlist">
-    </div>
+    <div ref="playlist"></div>
+    <p></p>
     <v-progress-linear
-      :dark="dark"
+      :dark="conf.dark"
       color="green accent-2"
       indeterminate
       rounded
@@ -50,14 +50,14 @@
 <script>
 import Mousetrap from 'mousetrap'
 import player from './player.js'
-//import styles from './light.css';
+import styles from './dark.css';
 
 export default {
+  name: "player",
   components: {},
   props: {
-    dark: Boolean,
     urls: Array,
-    title: String,
+    conf: Object,
   },
   data: function () {
     return {
@@ -71,11 +71,8 @@ export default {
     }
   },
   mounted: function () {
-    Mousetrap.bind('space', this.playpause )
-    this.player = new player(this.dark);
-    this.player.playlist.getEventEmitter().on('audiosourcesloaded', this.audioLoaded);
-    this.player.playlist.getEventEmitter().on('timeupdate', this.updateTime);
-    this.update_tracks();
+    Mousetrap.bind('space', this.playpause)
+    this.initPlayer()
   },
   beforeDestroy: function () {
     Mousetrap.unbind('space');
@@ -88,7 +85,10 @@ export default {
     delete this.player;
   },
   methods: {
-    update_tracks: function () {
+    initPlayer: function () {
+      this.player = new player(this.conf.dark, this.$refs.playlist, this.conf.zoom)
+      this.player.playlist.getEventEmitter().on('audiosourcesloaded', this.audioLoaded)
+      this.player.playlist.getEventEmitter().on('timeupdate', this.updateTime)
       if(this.isLoading != true) {
         this.saveState()
         this.stop()
@@ -105,10 +105,6 @@ export default {
             })(i, this)
           }
         }
-    },
-    addTrack: function (url) {
-      this.isLoading = true
-      this.player.addTrack(url)
     },
     saveState: function () {
       this.lastplaybackPosition = this.playbackPosition
@@ -140,6 +136,13 @@ export default {
     },
   },
   computed: {
+    title: function () {
+      if (typeof this.conf === "undefined") {
+        return "Empty Track"
+      } else {
+        return this.conf.title
+      }
+    },
     NumberOfTracks: function () {
       if (typeof this.player.playlist === "undefined") {
         return 0
@@ -151,8 +154,7 @@ export default {
   },
   watch: {
     urls: {
-      handler: 'update_tracks',
-      deep: true
+      handler: 'initPlayer'
     },
   }
 }
