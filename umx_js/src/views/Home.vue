@@ -1,32 +1,56 @@
 <template>
   <v-app id='app' :dark="dark">
-  <v-container>
-  <vue-dropzone 
-      id="drop" 
-      :options="dropOptions"
-      @vdropzone-file-added="renderAudioTag"
-      @vdropzone-complete="loadFile"
-       v-if="shouldRenderDropzone"
-    ></vue-dropzone>
-  
-    <div v-if="shouldRenderSong">
-      <!-- <vue-wave-surfer :src="file" :options="waveSurferOptions"></vue-wave-surfer> -->
-      <audio ref="ogAudio" controls>
-        <p>Your browser does not have the <code>audio</code> tag</p>
-      </audio>
+  <v-container >
+    
+      <vue-dropzone 
+        id="drop" 
+        :options="dropOptions"
+        @vdropzone-file-added="renderAudioTag"
+        @vdropzone-complete="loadFile"
+        v-if="shouldRenderDropzone"
+      ></vue-dropzone>
 
-      <button @click="processSong">Process song</button>
+    <div v-if=" shouldRenderSong">
+        <audio ref="ogAudio" controls>
+          <p>Your browser does not have the <code>audio</code> tag</p>
+        </audio>
+
+
+        <v-btn
+          color="secondary"
+          v-on:click="processSong"
+          ref="processButton"
+          disabled
+          block
+          >
+            Process Song
+        </v-btn>
+    
     </div>
-     <v-card
-      v-if="shouldRenderPlayer"
-      max-width="900"
-      class="mx-auto"
-      color="dark-grey"
-      dark
-    >
-      <Player :key="combKey" ref="player" :urls="tracklist" :conf="playerconf"></Player>
-    </v-card>
 
+    <div v-if="shouldRenderPlayer">
+      <v-card
+        max-width="900"
+        class="mx-auto"
+        color="dark-grey"
+        dark
+      >
+        <Player :key="combKey" ref="player" :urls="tracklist" :conf="playerconf"></Player>
+      </v-card>
+      <v-btn
+          color="primary"
+          v-on:click="download('vocals')"          
+          >
+            Download vocals
+        </v-btn>
+        <v-btn
+          color="primary"
+          v-on:click="download('back')"
+          >
+            Download Background track
+        </v-btn>
+    </div>
+    
   </v-container>    
   </v-app>
 </template>
@@ -46,17 +70,12 @@ export default {
       dropOptions: {
         url: "https://httpbin.org/post",
         maxFilesize: 5, // MB
-        maxFiles: 1,
-        addRemoveLinks: true
+        maxFiles: 1
       },
-      waveSurferOptions: {
-
-      },
-     
       shouldRenderPlayer: false,
       shouldRenderSong: false,
       shouldRenderDropzone:true,
-       dark: false,
+      dark: false,
       player: null,
       combKey: 42,
       showPlayer: false,
@@ -64,22 +83,12 @@ export default {
         title: "",
         zoom: 1024,
         dark: true,
-        streams: [
-          // { 
-          //   name: "vocals",
-          //   url: "https://dl.dropboxusercontent.com/s/70r7pym621ayoe8/vocals.m4a",
-          //   color: "#000000"
-          // },
-          // { 
-          //   name: "drums",
-          //   url: "https://dl.dropboxusercontent.com/s/7dc94n728l9qm5t/drums.m4a",
-          //   color: "#48bd75"
-          // },
-          ]
+        streams: []
       },
       publicPath: process.env.BASE_URL,
       trackstoload: [],
-      tracklist: []
+      tracklist: [],
+      fileName:""
     }
   },
   mounted: function () {
@@ -98,12 +107,14 @@ export default {
     loadFile: function(file) {
       let blob = window.URL || window.webkitURL;
       readFile(file)
-      this.$refs.ogAudio.src =  blob.createObjectURL(file);; 
-      this.playerconf.title = file.name
+      this.$refs.ogAudio.src =  blob.createObjectURL(file)
+      this.playerconf.title = file.name;
+      this.fileName = file.name.substr(0, file.name.lastIndexOf('.'));
+      this.$refs.processButton.disabled = false
     },
 
-    processSong(){
-      
+    async processSong(){
+      this.$refs.processButton.loading = true
       modelProcess(this.publicPath).then((result) => 
         {
           this.shouldRenderSong = false
@@ -126,6 +137,18 @@ export default {
           
       )
       
+    },
+
+    download(track){
+      let t = 0
+      if(track == 'back') t = 1
+      console.log(this.tracklist[0].src)
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(this.tracklist[t].src)
+      link.download = this.fileName+"_"+track+".wav"
+      link.click()
+      URL.revokeObjectURL( link.href);
+      link.remove();
     }
   },
   computed: {
@@ -139,12 +162,16 @@ export default {
 #app {
    height: 100vh;
 }
+
+
  #drop {
     height: 200px;
     padding: 40px;
     color: white;
-    background: lightblue;
+    text-align: center;
+    background: #303030;
 }
+
 
 #drop .dz-success-mark, .dz-error-mark {
     display: none;
