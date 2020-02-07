@@ -6,6 +6,7 @@
       :options="dropOptions"
       @vdropzone-file-added="renderAudioTag"
       @vdropzone-complete="loadFile"
+       v-if="shouldRenderDropzone"
     ></vue-dropzone>
   
     <div v-if="shouldRenderSong">
@@ -54,6 +55,7 @@ export default {
      
       shouldRenderPlayer: false,
       shouldRenderSong: false,
+      shouldRenderDropzone:true,
        dark: false,
       player: null,
       combKey: 42,
@@ -102,23 +104,26 @@ export default {
 
     processSong(){
       
-      modelProcess(this.publicPath).then((song) => 
+      modelProcess(this.publicPath).then((result) => 
         {
-          console.log(song)
+          this.shouldRenderSong = false
+          this.shouldRenderDropzone = false
           this.shouldRenderPlayer = true
           this.combKey = Math.ceil(Math.random() * 10000)
           let blob = window.URL || window.webkitURL;
           let trackstoload = []
-          //for (let stem of this.playerconf.streams) {
+          for (let stem of result.stems) {
             trackstoload.push(
-                { 'name': "vocals",//stem.name,
-                  'customClass': "vocals",//stem.name,
+                { 'name': stem.name,
+                  'customClass': stem.name,
                   'solo': false,
                   'mute': false,
-                  'src': blob.createObjectURL(song)//stem.url
+                  'src': stem.data
               })
-          //}
-          this.tracklist = trackstoload}
+          }
+          this.tracklist = trackstoload
+          }
+          
       )
       
     }

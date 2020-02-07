@@ -19,10 +19,27 @@ const specParams = {
     fftLength: FFT_SIZE
 };
 
-// const AUDIO_PATH = 'data/audio_example.mp3'
-const AUDIO_PATH = 'data/sine.mp3'
+ const AUDIO_PATH = 'data/audio_example.mp3'
+//const AUDIO_PATH = 'data/sine.mp3'
 // const AUDIO_PATH = "data/Shallow_CUT.mp3"
 // const AUDIO_PATH = "data/Shallow_Lady_Gaga.mp3"
+
+
+describe("a", function(){
+    it('the stft', function(){
+        let test_signal = tf.randomNormal([2070])
+        // Perform stft
+
+        let resultSTFT = tf.signal.stft(
+            test_signal,
+            specParams.winLength,
+            specParams.hopLength,
+            specParams.fftLength
+        );
+        
+        resultSTFT.print(true)
+    })
+})
 
 // STFT  test
 describe('Signal -> STFT -> ISTFT -> Signal', function() {
@@ -134,3 +151,4 @@ describe('Music -> STFT -> ISTFT -> Music', function() {
     });
 
 });
+

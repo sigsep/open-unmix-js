@@ -67,24 +67,58 @@ async function modelProcess(url){
     console.log("Num patches " + numPatches)
     model = await tf.loadGraphModel(path);
     let start = 0
-    let channel0_stem = [];
-    let channel1_stem = [];
+    let vocal_stem = [[],[]];
+    let back_stem = [[],[]];
     let chunk = HOP_LENGTH * 255//Math.floor(aud.src[0].length / numPatches)
     let end = chunk
     for (let i = 0; i < numPatches; i++) {
         console.log("Start processing chunk: "+i)
         const result0 = preProcessing(aud.src[0].slice(start, end), specParams);
         const result1 = preProcessing(aud.src[1].slice(start, end), specParams);
-        let predict = await loadAndPredict(path, [result0, result1], specParams)
-        channel0_stem[i] = predict[0];
-        channel1_stem[i] = predict[1];
+        let predict = await modelPredict([result0, result1], specParams)
+        // vocals_channel0_stem[i] = predict[0][0];
+        // vocals_channel1_stem[i] = predict[0][1];
+        // back_channel0_stem[i] = predict[1][0];
+        // back_channel1_stem[i] = predict[1][0];
+        vocal_stem[0][i] = predict[0][0]
+        vocal_stem[1][i] = predict[0][1]
+        back_stem[0][i] = predict[1][0]
+        back_stem[1][i] = predict[1][1]
         console.log("End processing chunk: "+i)
         start+=chunk+1
         end = start+chunk
+        result0.dispose()
+        result1.dispose()
     }
 
-    let processedSignal0 = channel0_stem.flat()
-    let processedSignal1 = channel1_stem.flat()
+    let vocals = processOutput(vocal_stem, specParams)
+    let back = processOutput(back_stem,specParams)
+
+    console.log("Generating wave file")
+    
+    let buff_vocals = createWave(vocals, "vocals.wav")
+    let buff_back = createWave(back, "back.wav")
+    //saveFile("Example.wav", "audio/wav", buff);
+    return {
+        stems:[
+            {
+                name:"vocals",
+                data: buff_vocals
+            },
+            {
+                name:"background",
+                data:buff_back
+            }
+        ]
+    }
+     
+}
+
+
+function processOutput(channels, specParams){
+
+    let processedSignal0 = channels[0].flat()
+    let processedSignal1 = channels[1].flat()
 
     let channelLength = aud.src[0]
     let processedLength = processedSignal0.length
@@ -93,18 +127,12 @@ async function modelProcess(url){
     processedSignal1 = insertZeros(processedSignal1, processedLength, channelLength, specParams)
 
     // Generate buffer dic to create waveFile
-    let bufferOutput = {
+    return {
         numberOfChannels: 2,
         sampleRate: 44100,
         channelData: [processedSignal0, processedSignal1]
     }
-
-    console.log("Generating wave file")
-    return createWave(bufferOutput, "file.wav")
-    
-     
 }
-
 
 /**
  * Insert zeros in the beginning and end of signal
@@ -129,12 +157,10 @@ function insertZeros(signal, processedLength, originalLength, specParams){
  * @param specParams
  * @returns {Promise<[][]>}
  */
-async function loadAndPredict(path, resultSTFT, specParams){ //Update this
-    // model load
-    // const model = await tf.node.loadSavedModel(pb_path);
+async function modelPredict(resultSTFT, specParams){ //Update this
     
-    let result = [[],[]]
-
+    let result_vocals = [[],[]]
+    let result_background = [[],[]]
     let number_of_frames = resultSTFT[0].shape[0]
 
     // //Fill with zeros
@@ -160,41 +186,33 @@ async function loadAndPredict(path, resultSTFT, specParams){ //Update this
 
     // e^io = cos(theta)+i*sin(theta)
 
-    let estimate = tf.mul(
-        tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
-        tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
+    let estimate = tf.tidy(() => {
+        return tf.mul(
+            tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
+            tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
         //tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"]))
-    )
+        )
+    })
 
-    // TODO: background
-    let estimat_f = tf.mul(
-        tf.complex( (input["model_input"].sub(output)), tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
-        tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
+    let vocals = postProcessing(estimate, specParams, 1.0)
+
+    let estimate_background = tf.tidy(() => {
+        return tf.mul(
+            tf.complex((input["model_input"].sub(output)), tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
+            tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
         //tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"]))
-    )
-
-    let estimateReshapedR = tf.real(estimate)
-    let estimateReshapedI = tf.imag(estimate)
-
-    estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
-    estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
-
-    // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
-    let estimateReshaped = []//estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
-
-    estimateReshaped[0] = tf.complex(estimateReshapedR[0], estimateReshapedI[0])
-    estimateReshaped[1] = tf.complex(estimateReshapedR[1], estimateReshapedI[1])
-
-    let res0 = postProcessing(estimateReshaped[0], specParams, 1.0)
-    let res1 = postProcessing(estimateReshaped[1], specParams, 1.0)
-    //
+        )
+    })
+  
+    let background = postProcessing(estimate_background, specParams, 1.0)
+    
 
     // Push into result 2 channels
-    result = [[...result[0],...res0], [...result[1],...res1]]
-
+    result_vocals = [[...result_vocals[0],...vocals[0]], [...result_vocals[1],...vocals[1]]]
+    result_background = [[...result_background[0],...background[0]], [...result_background[1],...background[1]]]
     //}
 
-    return result;
+    return [result_vocals, result_background]
 }
 
 /**
@@ -209,6 +227,7 @@ function preProcessing(channel, specParams){
     // Pad the signal for soft beginning
     input = padSignal(input, specParams, true); //multiple of 1024 (hop_size/frame_size?)
 
+    console.log("shape before stft: ", input.shape)
     // Perform stft
     let resultSTFT = tf.signal.stft(
         input,
@@ -254,16 +273,30 @@ function padSignal(signal, specParams, forward){
  * @param factor
  * @returns {Float32Array}
  */
-function postProcessing(input, specParams, factor){
-    let resultISTFT = istft(input, specParams, factor);
-    if (DEBUG) console.log("Shape after ISTFT: ", resultISTFT.length)
-    let signal = tf.tensor1d(resultISTFT)
-    signal = padSignal(signal, specParams, false)
+function postProcessing( estimate, specParams, factor){
+    // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+    let estimateReshaped = tf.tidy(() => {
+       
+        let estimateReshapedR = tf.real(estimate)
+        let estimateReshapedI = tf.imag(estimate)
 
-    // let resultMSE = mse(resultISTFT.slice(0, channel.length-1), channel);
-    // console.log('Channel data sets are different by ' + resultMSE);
+        estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+        estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
 
-    return signal.arraySync()
+        return [tf.complex(estimateReshapedR[0], estimateReshapedI[0]),tf.complex(estimateReshapedR[1], estimateReshapedI[1])]
+    })
+
+    let result = []
+    for (let input of estimateReshaped){
+        let resultISTFT = istft(input, specParams, factor);
+        if (DEBUG) console.log("Shape after ISTFT: ", resultISTFT.length)
+        let signal = tf.tensor1d(resultISTFT)
+        signal = padSignal(signal, specParams, false)
+        result.push(signal.arraySync())
+        signal.dispose()
+    }
+   
+    return result
 }
 
 /**
@@ -485,19 +518,19 @@ function createWave(outputBuffer, path) {
     }
 }
 
-// function saveFile (name, type, data) {
-//     if (data != null && navigator.msSaveBlob)
-//         return navigator.msSaveBlob(new Blob([data], { type: type }), name);
-//     var a = document.createElement("a");
-//     // document.body.appendChild(a);
-//     a.style = "display: none";
-//     var url = window.URL.createObjectURL(new Blob([data], {type: type}));
-//     a.href = url;
-//     a.download = name;
-//     document.body.appendChild(a);
-//     a.click();
-//     window.URL.revokeObjectURL(url);
-//     a.remove();
-// }
+function saveFile (name, type, data) {
+    if (data != null && navigator.msSaveBlob)
+        return navigator.msSaveBlob(new Blob([data], { type: type }), name);
+    var a = document.createElement("a");
+    // document.body.appendChild(a);
+    a.style = "display: none";
+    var url = window.URL.createObjectURL(new Blob([data], {type: type}));
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+}
 
 export {readFile, modelProcess}
