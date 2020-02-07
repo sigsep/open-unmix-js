@@ -1,21 +1,13 @@
-/**
- * Test file for STFT and ISTFT using tfjs and magenta/music
- */
+tf.ENV.set('WEBGL_CONV_IM2COL', false);
+
 const DEBUG = false
-
-const tf = require('@tensorflow/tfjs-node');
-const fs = require('fs'); //Still used to test songs TODO must remove
-
-const decode = require('audio-decode'); // TODO remove to use only browser supported functions
-const Lame = require("node-lame").Lame; // TODO remove
 
 const FRAME_LENGTH = 2048
 const HOP_LENGTH = 1024
-const NFFT = 2048
+const FFT_SIZE = 2048
 const SAMPLE_RATE = 44100
 const PATCH_LENGTH = 256
 
-tf.ENV.set('WEBGL_CONV_IM2COL', false);
 
 const FREQUENCES = 1025 //2049
 const FRAMES = 256 //100
@@ -26,14 +18,12 @@ const PADDING = 8 // Padding for model prediction
 const path_ = 'http://localhost:5000/modelJs/model.json'
 const pb_path = "model"
 const AUDIO_PATH = '../data/audio_example.mp3'
-// const AUDIO_PATH = "../data/Shallow_CUT.mp3"
-// const AUDIO_PATH = "../data/Shallow_Lady_Gaga.mp3"
 
-// STFT and ISTFT params:
-const ispecParams = {
+// STFT-ISTFT params:
+const specParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
-    nFft: NFFT
+    fftLength: FFT_SIZE
 };
 
 tf.enableProdMode()
@@ -42,49 +32,65 @@ let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
 
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
-/**
- * Returns decoded file as buffer
- * @param path
- * @return buffer to process
- */
-async function decodeFile(path){
-    const decoder = new Lame({
-        output: "buffer",
-        bitrate: 192,
-    }).setFile(path);
+context = new (window.AudioContext || window.webkitAudioContext)();
 
-    return decoder
-        .decode()
-        .then(() => {
-            let buffer = decoder.getBuffer();
-            //decodeFromBuffer(buffer)
-            // console.log("here")
-            // decodeFromBuffer2(buffer)
-            return buffer
-        })
-        .catch(error => {
-            console.log(error)
+async function test(){
+    var request = new XMLHttpRequest();
+
+    request.open( 'GET', '../data/audio_example.mp3', true );
+    request.responseType = 'arraybuffer';
+
+    request.onload = function() {
+        context.decodeAudioData(request.response, async function (buffer) {
+            let signal0 = buffer.getChannelData(0)
+            let signal1 = buffer.getChannelData(1)
+
+            const numPatches = Math.floor(Math.floor((signal0.length - 1) / HOP_LENGTH) / PATCH_LENGTH) + 1;
+
+            console.log("Num patches " + numPatches)
+
+            let start = 0
+            let channel0_stem = [];
+            let channel1_stem = [];
+            let chunk = Math.floor(signal0.length / numPatches)
+            let end = chunk
+            for (let i = 0; i < numPatches; i++) {
+                console.log("Start processing chunk: "+i)
+                const result0 = preProcessing(signal0.slice(start, end), specParams);
+                const result1 = preProcessing(signal1.slice(start, end), specParams);
+                let predict = await loadAndPredict('', [result0, result1], specParams)
+                channel0_stem[i] = predict[0];
+                channel1_stem[i] = predict[1];
+                console.log("End processing chunk: "+i)
+                start+=chunk+1
+                end = start+chunk
+            }
+
+            let processedSignal0 = channel0_stem.flat()
+            let processedSignal1 = channel1_stem.flat()
+
+            let channelLength = signal0
+            let processedLength = processedSignal0.length
+
+            processedSignal0 = insertZeros(processedSignal0, processedLength, channelLength, specParams)
+            processedSignal1 = insertZeros(processedSignal1, processedLength, channelLength, specParams)
+
+            // Generate buffer dic to create waveFile
+            let bufferOutput = {
+                numberOfChannels: 2,
+                sampleRate: 44100,
+                channelData: [processedSignal0, processedSignal1]
+            }
+
+            console.log("Generating wave file")
+            let buff = createWave(bufferOutput, 'outPutWave.wav')
+            saveFile("Example.wav", "audio/wav", buff);
         });
+    }
+
+    request.send();
 }
 
-
-/**
- * Decode the buffer to float32Array with expected channels
- * @param buffer
- * @return AudioBuffer{
- *     length,
- *     numberOfChannels
- *     sampleRate,
- *     duration
- *     _data:[]
- *     _channelData[numberOfChannels]
- * }
- */
-async function decodeFromBuffer(buffer){
-    return decode(buffer, (err, audioBuffer) => {
-        return audioBuffer
-    });
-}
 
 /**
  * Insert zeros in the beginning and end of signal
@@ -126,52 +132,57 @@ async function loadAndPredict(path, resultSTFT, specParams){ //Update this
     }
     //for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
     //for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
-        let input = createInput(resultSTFT[0], resultSTFT[1], 0)
-        // prediction
-        const output = tf.tidy(() => {
-            return model.predict(input["model_input"]);
-            // let paddedPredict = model.predict(input["model_input"]);
-            // return paddedPredict.slice([(PADDING/2), 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
-        })
+    let input = createInput(resultSTFT[0], resultSTFT[1], 0)
+    // prediction
+    const output = tf.tidy(() => {
+        return model.predict(input["model_input"]);
+        // let paddedPredict = model.predict(input["model_input"]);
+        // return paddedPredict.slice([(PADDING/2), 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
+    })
 
-        // Used in normal tensorflow
-        //const output = await model.predict(input["model_input"]);
+    // Used in normal tensorflow
+    //const output = await model.predict(input["model_input"]);
 
-        // const estimateReshaped = tf.tidy(() => {
-        //     let mix_angle = input["mix_angle"].slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
-        //
-        //     let result = tf.mul(tf.complex(output, tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES])),
-        //         tf.exp(tf.complex(tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES]), mix_angle)))
-        //     // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
-        //     return result.unstack(2).map(tensor => tensor.squeeze())
-        // });
-        //
-        // let res0 = istft(estimateReshaped[0], ispecParams)
-        // let res1 = istft(estimateReshaped[1], ispecParams)
+    // const estimateReshaped = tf.tidy(() => {
+    //     let mix_angle = input["mix_angle"].slice([PADDING/2, 0, 0, 0],[(FRAMES-PADDING), 1, 2, FREQUENCES])
+    //
+    //     let result = tf.mul(tf.complex(output, tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES])),
+    //         tf.exp(tf.complex(tf.zeros([FRAMES-PADDING, N_BATCHES, N_CHANNELS, FREQUENCES]), mix_angle)))
+    //     // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+    //     return result.unstack(2).map(tensor => tensor.squeeze())
+    // });
+    //
+    // let res0 = istft(estimateReshaped[0], ispecParams)
+    // let res1 = istft(estimateReshaped[1], ispecParams)
 
-        let estimate = tf.mul(tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
-            tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
-            //tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"]))
-        )
+    //Complex(output) * e^complex(input)
 
-        let estimateReshapedR = tf.real(estimate)
-        let estimateReshapedI = tf.imag(estimate)
+    //I know that e^io = cos(theta)+i*sin(theta)
 
-        estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
-        estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+    let estimate = tf.mul(
+        tf.complex(output, tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES])),
+        tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
+        //tf.exp(tf.complex(tf.zeros([FRAMES, N_BATCHES, N_CHANNELS, FREQUENCES]), input["mix_angle"]))
+    )
 
-        // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
-        let estimateReshaped = []//estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+    let estimateReshapedR = tf.real(estimate)
+    let estimateReshapedI = tf.imag(estimate)
 
-        estimateReshaped[0] = tf.complex(estimateReshapedR[0], estimateReshapedI[0])
-        estimateReshaped[1] = tf.complex(estimateReshapedR[1], estimateReshapedI[1])
+    estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+    estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
 
-        let res0 = postProcessing(estimateReshaped[0], specParams, 1.0)
-        let res1 = postProcessing(estimateReshaped[1], specParams, 1.0)
-        //
+    // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
+    let estimateReshaped = []//estimate.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
 
-        // Push into result 2 channels
-        result = [[...result[0],...res0], [...result[1],...res1]]
+    estimateReshaped[0] = tf.complex(estimateReshapedR[0], estimateReshapedI[0])
+    estimateReshaped[1] = tf.complex(estimateReshapedR[1], estimateReshapedI[1])
+
+    let res0 = postProcessing(estimateReshaped[0], specParams, 1.0)
+    let res1 = postProcessing(estimateReshaped[1], specParams, 1.0)
+    //
+
+    // Push into result 2 channels
+    result = [[...result[0],...res0], [...result[1],...res1]]
 
     //}
 
@@ -258,33 +269,18 @@ function createInput(res0, res1, slice_start){
     let absChannel1 = tf.abs(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
     const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
 
-
-    let chan0 = res0.slice([slice_start,0], [FRAMES, FREQUENCES])
-    let chan1 = res1.slice([slice_start,0], [FRAMES, FREQUENCES])
-
-    console.log(chan0.shape)
-
-    // let chan0R = tf.real(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
-    // let chan0I = tf.imag(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
     //
-    // let chnn0 = [chan0R.arraySync(), chan0I.arraySync()]
-    // let chnn1 = [chan0R.arraySync(), chan0I.arraySync()]
-    //
-    //
-    //
-    // let chan1R = tf.real(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
-    // let chan1I = tf.imag(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
-    //
-    // let chan0 = tf.complex(chan0R, chan0I)
-    // let chan1 = tf.complex(chan1R, chan1I)
+    let chan0R = tf.real(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
+    let chan0I = tf.imag(res0).slice([slice_start,0], [FRAMES, FREQUENCES])
 
-    let mix_stft = tf.stack([chan0, chan1])
+    let chan1R = tf.real(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
+    let chan1I = tf.imag(res1).slice([slice_start,0], [FRAMES, FREQUENCES])
 
-    console.log(mix_stft.shape)
+    let chanR = tf.stack([chan0R.arraySync(), chan1R.arraySync()]).transpose([1, 0, 2]).expandDims(1)
+    let chanI = tf.stack([chan0I.arraySync(), chan1I.arraySync()]).transpose([1, 0, 2]).expandDims(1)
 
-    mix_stft = mix_stft.transpose([1, 0, 2]).expandDims(1)
 
-    console.log(mix_stft.shape)
+    let mix_stft = tf.complex(chanR, chanI)
 
     let mix_angle = tf.atan2(tf.imag(mix_stft), tf.real(mix_stft))
     return {"model_input":model_input, "mix_angle":mix_angle}
@@ -492,20 +488,22 @@ function createWave(outputBuffer, path) {
     // create Blob
 
     //used by node
-    let buff = new Buffer.from(buffer)
-    fs.open(path, 'w', function(err, fd) {
-        if (err) {
-            throw 'error opening file: ' + err;
-        }
-        fs.write(fd, buff, 0, buff.length, null, function(err) {
-            if (err) throw 'error writing file: ' + err;
-            fs.close(fd, function() {
-                console.log('file written');
-            })
-        });
-    });
+    // let buff = new Buffer.from(buffer)
+    // fs.open(path, 'w', function(err, fd) {
+    //     if (err) {
+    //         throw 'error opening file: ' + err;
+    //     }
+    //     fs.write(fd, buff, 0, buff.length, null, function(err) {
+    //         if (err) throw 'error writing file: ' + err;
+    //         fs.close(fd, function() {
+    //             console.log('file written');
+    //         })
+    //     });
+    // });
+
 
     //used by pure js
+    return buffer
     // return new Blob([buffer], {type: "audio/wav"});
 
     function setUint16(data) {
@@ -519,11 +517,17 @@ function createWave(outputBuffer, path) {
     }
 }
 
-exports.preProcessing = preProcessing;
-exports.istft = istft;
-module.exports.decodeFile = decodeFile;
-exports.postProcessing = postProcessing;
-exports.decodeFromBuffer = decodeFromBuffer
-exports.createWave = createWave
-exports.insertZeros = insertZeros
-exports.loadAndPredict = loadAndPredict
+function saveFile (name, type, data) {
+    if (data != null && navigator.msSaveBlob)
+        return navigator.msSaveBlob(new Blob([data], { type: type }), name);
+    var a = document.createElement("a");
+    // document.body.appendChild(a);
+    a.style = "display: none";
+    var url = window.URL.createObjectURL(new Blob([data], {type: type}));
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+}

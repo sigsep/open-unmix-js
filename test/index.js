@@ -18,9 +18,8 @@ const specParams = {
     fftLength: FFT_SIZE
 };
 
-
-const AUDIO_PATH = 'data/audio_example.mp3'
-// const AUDIO_PATH = 'data/sine.mp3'
+// const AUDIO_PATH = 'data/audio_example.mp3'
+const AUDIO_PATH = 'data/sine.mp3'
 // const AUDIO_PATH = "data/Shallow_CUT.mp3"
 // const AUDIO_PATH = "data/Shallow_Lady_Gaga.mp3"
 
@@ -59,8 +58,7 @@ describe('Music -> STFT -> ISTFT -> Music', function() {
         this.timeout(0);
 
         let decodedFile = await code.decodeFile(AUDIO_PATH)
-        let decodedFromBuffer = await code.decodeFromBuffer
-        (decodedFile)
+        let decodedFromBuffer = await code.decodeFromBuffer(decodedFile)
 
         const stftMusic0 = code.preProcessing(decodedFromBuffer._channelData[0], specParams)
         const stftMusic1 = code.preProcessing(decodedFromBuffer._channelData[1], specParams)
@@ -88,7 +86,7 @@ describe('Music -> STFT -> ISTFT -> Music', function() {
 
     it('should return only the voice when using the model', async function(done) {
         this.timeout(0);
-
+        console.log(tf.getBackend());
         let decodedFile = await code.decodeFile(AUDIO_PATH)
         let decodedFromBuffer = await code.decodeFromBuffer(decodedFile)
 
@@ -104,7 +102,7 @@ describe('Music -> STFT -> ISTFT -> Music', function() {
         for (let i = 0; i < numPatches; i++) {
             console.log("Start processing chunk: "+i)
             const result0 = code.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
-            const result1 = code.preProcessing(decodedFromBuffer._channelData[1].slice(start, end), specParams);
+            const result1 = code.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
             let predict = await code.loadAndPredict('', [result0, result1], specParams)
             channel0_stem[i] = predict[0];
             channel1_stem[i] = predict[1];
@@ -116,7 +114,7 @@ describe('Music -> STFT -> ISTFT -> Music', function() {
         let processedSignal0 = channel0_stem.flat()
         let processedSignal1 = channel1_stem.flat()
 
-        let channelLength = decodedFromBuffer._channelData[0]
+        let channelLength = decodedFromBuffer._channelData
         let processedLength = processedSignal0.length
 
         processedSignal0 = code.insertZeros(processedSignal0, processedLength, channelLength, specParams)
