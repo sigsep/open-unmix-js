@@ -59,7 +59,7 @@ export default {
       combKey: 42,
       showPlayer: false,
       playerconf: {
-        title: "My Track title",
+        title: "",
         zoom: 1024,
         dark: true,
         streams: [
@@ -80,20 +80,12 @@ export default {
     }
   },
   mounted: function () {
-    //this.fetchData();
+  
   },
   created: function () {
     
   },
   methods: {
-    fetchData(){
-     axios.get(this.baseUrl + 'headers.json').then(response => {
-        this.tracks = response.data.tracks
-        this.stems = response.data.stems
-        this.selectedTrack = response.data.selected_track
-        this.dark = response.data.dark
-     })
-    },
     /* eslint-disable */
     renderAudioTag(file){
        this.shouldRenderSong = true
@@ -103,16 +95,17 @@ export default {
     loadFile: function(file) {
       let blob = window.URL || window.webkitURL;
       readFile(file)
-      this.$refs.ogAudio.src =  blob.createObjectURL(file); 
-      this.shouldRenderPlayer = true
+      this.$refs.ogAudio.src =  blob.createObjectURL(file);; 
+      this.playerconf.title = file.name
     },
 
     processSong(){
       let blob = window.URL || window.webkitURL;
       let song = modelProcess()
-      console.log(this.$refs.player)
+      this.shouldRenderPlayer = true
       this.combKey = Math.ceil(Math.random() * 10000)
-      var trackstoload = []
+    
+      let trackstoload = []
       //for (let stem of this.playerconf.streams) {
         trackstoload.push(
             { 'name': "vocals",//stem.name,
@@ -126,21 +119,7 @@ export default {
     }
   },
   computed: {
-  //   tracklist: function () {
-  //     var trackstoload = []
-  //     for (let stem of this.stems) {
-  //       trackstoload.push(
-  //           { 'name': stem,
-  //             'customClass': stem,
-  //             'solo': false,
-  //             'mute': false,
-  //             'src': [
-  //               'tracks', this.selectedTrack, stem
-  //             ].join('/') + '.m4a'
-  //         })
-  //     }
-  //     return trackstoload
-  //   }
+  
   }
 
 }
