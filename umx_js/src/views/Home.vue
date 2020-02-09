@@ -1,9 +1,9 @@
 <template>
   <v-app id='app' :dark="dark">
   <v-container >
-    
-      <vue-dropzone 
-        id="drop" 
+
+      <vue-dropzone
+        id="drop"
         :options="dropOptions"
         @vdropzone-file-added="renderAudioTag"
         @vdropzone-complete="loadFile"
@@ -25,7 +25,7 @@
           >
             Process Song
         </v-btn>
-    
+
     </div>
 
     <div v-if="shouldRenderPlayer">
@@ -37,21 +37,28 @@
       >
         <Player :key="combKey" ref="player" :urls="tracklist" :conf="playerconf"></Player>
       </v-card>
-      <v-btn
-          color="primary"
-          v-on:click="download('vocals')"          
-          >
-            Download vocals
-        </v-btn>
-        <v-btn
-          color="primary"
-          v-on:click="download('back')"
-          >
-            Download Background track
-        </v-btn>
+        <div id="center">
+            <div id="left">
+            <v-btn
+              color="primary"
+              v-on:click="download('vocals')"
+              >
+                Download vocals
+            </v-btn>
+
+            </div>
+            <div id="right">
+            <v-btn
+              color="primary"
+              v-on:click="download('back')"
+              >
+                Download Background track
+            </v-btn>
+            </div>
+        </div>
     </div>
-    
-  </v-container>    
+
+  </v-container>
   </v-app>
 </template>
 <script>
@@ -92,10 +99,10 @@ export default {
     }
   },
   mounted: function () {
-  
+
   },
   created: function () {
-    
+
   },
   methods: {
     /* eslint-disable */
@@ -115,7 +122,7 @@ export default {
 
     async processSong(){
       this.$refs.processButton.loading = true
-      modelProcess(this.publicPath).then((result) => 
+      modelProcess(this.publicPath).then((result) =>
         {
           this.shouldRenderSong = false
           this.shouldRenderDropzone = false
@@ -134,9 +141,9 @@ export default {
           }
           this.tracklist = trackstoload
           }
-          
+
       )
-      
+
     },
 
     download(track){
@@ -152,7 +159,7 @@ export default {
     }
   },
   computed: {
-  
+
   }
 
 }
@@ -179,5 +186,23 @@ export default {
 
 .select {
   z-index: 1000
+}
+
+
+#center {
+    align: center;
+    padding: 1%;
+    margin: 0 auto;
+    border-spacing: 10%;
+    justify-content: space-between;
+    display: flex;
+}
+
+#left {
+    margin-left: 10%;
+}
+
+#right {
+    margin-right: 10%;
 }
 </style>
