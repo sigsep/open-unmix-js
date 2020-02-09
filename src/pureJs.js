@@ -15,9 +15,8 @@ const N_CHANNELS = 2
 const N_BATCHES = 1
 const PADDING = 8 // Padding for model prediction
 
-const path_ = 'http://localhost:5000/modelJs/model.json'
-const pb_path = "model"
-const AUDIO_PATH = '../data/audio_example.mp3'
+const MODEL_PATH = 'http://localhost:5000/modelJs/model.json'
+const AUDIO_PATH = '../data/sine2.mp3'
 
 // STFT-ISTFT params:
 const specParams = {
@@ -30,14 +29,18 @@ tf.enableProdMode()
 
 let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
 
+let model
+
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 
 context = new (window.AudioContext || window.webkitAudioContext)();
 
 async function test(){
+    model = await tf.loadGraphModel(MODEL_PATH);
+
     var request = new XMLHttpRequest();
 
-    request.open( 'GET', '../data/audio_example.mp3', true );
+    request.open( 'GET', AUDIO_PATH, true );
     request.responseType = 'arraybuffer';
 
     request.onload = function() {
@@ -52,7 +55,7 @@ async function test(){
             let start = 0
             let channel0_stem = [];
             let channel1_stem = [];
-            let chunk = Math.floor(signal0.length / numPatches)
+            let chunk = HOP_LENGTH * 255
             let end = chunk
             for (let i = 0; i < numPatches; i++) {
                 console.log("Start processing chunk: "+i)
@@ -118,7 +121,6 @@ function insertZeros(signal, processedLength, originalLength, specParams){
 async function loadAndPredict(path, resultSTFT, specParams){ //Update this
     // model load
     // const model = await tf.node.loadSavedModel(pb_path);
-    const model = await tf.loadGraphModel(path_);
     let result = [[],[]]
 
     let number_of_frames = resultSTFT[0].shape[0]
@@ -127,8 +129,8 @@ async function loadAndPredict(path, resultSTFT, specParams){ //Update this
     if(number_of_frames < FRAMES){
         let fillZeros = FRAMES - number_of_frames
         let pad =tf.zeros([fillZeros,FREQUENCES], 'complex64')
-        resultSTFT[0] = tf.concat([pad,resultSTFT[0]])
-        resultSTFT[1] = tf.concat([pad,resultSTFT[1]])
+        resultSTFT[0] = tf.concat([resultSTFT[0], pad,])
+        resultSTFT[1] = tf.concat([resultSTFT[1], pad])
     }
     //for(let i = 0; i < (number_of_frames - (number_of_frames % (FRAMES-PADDING))) ; i+=(FRAMES-PADDING)){
     //for(let i = 0; i < (number_of_frames - (number_of_frames % FRAMES)) ; i+= FRAMES){
@@ -230,7 +232,7 @@ function padSignal(signal, specParams, forward){
         if (DEBUG) console.log("[Preprocessing] Size after padding: " + signal.shape)
         return signal
     }else{
-        signal = tf.slice(signal, [pad], [(signal.shape - pad)])
+        signal = tf.slice(signal, [pad], [(signal.shape - 2 * pad)])
         if (DEBUG) console.log("[Postprocessing] Size after padding: " + signal.shape)
         return signal
     }

@@ -36,18 +36,18 @@ describe("a", function(){
             specParams.hopLength,
             specParams.fftLength
         );
-        
+
         resultSTFT.print(true)
     })
 })
 
 // STFT  test
 describe('Signal -> STFT -> ISTFT -> Signal', function() {
-    it('should return an error lower than 10e-6 when using random signal', function() {
+    it.skip('should return an error lower than 10e-6 when using random signal', function() {
         signal = tf.randomNormal([32768]).arraySync(); // 32768 2^15
     });
 
-    it('should return an error lower than 10e-6 when using sine signal', function() {
+    it.skip('should return an error lower than 10e-6 when using sine signal', function() {
         signal = new Float32Array(WAVE_LENGTH)
         for(let i = 0; i < WAVE_LENGTH; i++){
             signal[i] = Math.sin(i)
@@ -72,7 +72,7 @@ describe('Signal -> STFT -> ISTFT -> Signal', function() {
 });
 
 describe('Music -> STFT -> ISTFT -> Music', function() {
-    it('should return the original sine wave', async function(done) {
+    it.skip('should return the original sine wave', async function(done) {
         this.timeout(0);
 
         let decodedFile = await code.decodeFile(AUDIO_PATH)

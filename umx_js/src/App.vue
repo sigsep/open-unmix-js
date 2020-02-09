@@ -8,7 +8,7 @@
 import Home from './views/Home';
 
 export default {
-  name: 'App',
+  name: 'SigSep',
 
   components: {
     Home,
