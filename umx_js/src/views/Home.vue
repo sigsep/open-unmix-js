@@ -101,14 +101,14 @@ export default {
     return {
       dropOptions: {
         url: "https://httpbin.org/post",
-        maxFilesize: 5, // MB
+        maxFilesize: 50, // MB
         maxFiles: 1,
         dictDefaultMessage: 'Drag your files here or click in this area.',
       },
       shouldRenderPlayer: false,
       shouldRenderSong: false,
       shouldRenderDropzone:true,
-      dark: false,
+      dark: true,
       player: null,
       combKey: 42,
       showPlayer: false,
