@@ -20,7 +20,7 @@ var Player = function (dark, ref, zoom=1280) {
         },
         controls: {
             show: true, //whether or not to include the track controls
-            width: 100 //width of controls in pixels
+            width: 120 //width of controls in pixels
         },
         zoomLevels: [zoom]
     });
