@@ -1,10 +1,11 @@
 .keyboard {
   opacity: 0.8;
   font-size: 0.8em;
+  background-color: white;
 }
 
 kbd {
-    color: black;
+    color: white;
     display: inline-block;
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -24,11 +25,11 @@ kbd {
   display: none;
 }
 
-#playlist.hide{
+.playlist.hide{
   display: none;
 }
 
-#playlist .playlist-tracks .mix header {
+.playlist .playlist-tracks .mix header {
   background-color: white;
   border-left: 1px solid gray;
   border-top: 1px solid gray;
@@ -36,27 +37,27 @@ kbd {
   color: black;
 }
 
-#playlist .playlist-tracks .vocals header {
+.playlist .playlist-tracks .vocals header {
   color: white;
   background-color: #56B4E9;
 }
 
-#playlist .playlist-tracks .accompaniment header {
+.playlist .playlist-tracks .accompaniment header {
   color: white;
   background-color: #818181;
 }
 
-#playlist .playlist-tracks .drums header {
+.playlist .playlist-tracks .drums header {
   color: white;
   background-color: #009E73;
 }
 
-#playlist .playlist-tracks .bass header {
+.playlist .playlist-tracks .bass header {
   color: white;
   background-color: #D55E00;
 }
 
-#playlist .playlist-tracks .other header {
+.playlist .playlist-tracks .other header {
   color: white;
   background-color: #CC79A7;
 }
