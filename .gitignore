@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+oldJs.js
+stft.js
+node_modules
+.vscode
+*.mp3
+*.wav
+*.pb
+data
+extractor.py
+__pycache__
