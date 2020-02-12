@@ -25,11 +25,11 @@ const specParams = {
 tf.enableProdMode()
 
 let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
-let model 
+let model
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 let aud = {}
 
-function readFile(file){ // Maybe rename this to be different from japanese guy? 
+function readFile(file){ // Maybe rename this to be different from japanese guy?
     const fileReader = new FileReader()
     fileReader.onerror = function(){ console.log("Error when reading the file") }
     fileReader.onload = function(file){
@@ -85,7 +85,7 @@ async function modelProcess(url){
 
     let vocals = createBuffer(vocal_stem, specParams)
     let back = createBuffer(back_stem,specParams)
-        
+
     let buff_vocals = createWave(vocals, "vocals.wav")
     let buff_back = createWave(back, "accompaniment.wav")
     //saveFile("Example.wav", "audio/wav", buff);
@@ -121,13 +121,12 @@ function createBuffer(channels, specParams){
 
 /**
  *
- * @param path
  * @param resultSTFT
  * @param specParams
  * @returns {Promise<[][]>}
  */
-async function modelPredict(resultSTFT, specParams){ //Update this
-    
+async function modelPredict(resultSTFT, specParams){
+
     let result_vocals = [[],[]]
     let result_background = [[],[]]
     let number_of_frames = resultSTFT[0].shape[0]
@@ -155,9 +154,9 @@ async function modelPredict(resultSTFT, specParams){ //Update this
             tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
         )
     })
-  
+
     let background = postProcessing(estimate_background, specParams, 1.0)
-    
+
 
     // Push into result 2 channels
     result_vocals = [[...result_vocals[0],...vocals[0]], [...result_vocals[1],...vocals[1]]]
@@ -210,21 +209,20 @@ function padSignal(signal, specParams, forward){
         signal = tf.slice(signal, [pad], [(signal.shape - (2 * pad))])
         return signal
     }
-
 }
 
 
 /**
  *
- * @param input
+ * @param estimate
  * @param specParams
  * @param factor
- * @returns {Float32Array}
+ * @returns Float32Array[]
  */
 function postProcessing( estimate, specParams, factor){
     // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
     let estimateReshaped = tf.tidy(() => {
-       
+
         let estimateReshapedR = tf.real(estimate)
         let estimateReshapedI = tf.imag(estimate)
 
@@ -242,7 +240,7 @@ function postProcessing( estimate, specParams, factor){
         result.push(signal.arraySync())
         signal.dispose()
     }
-   
+
     return result
 }
 
@@ -348,10 +346,10 @@ function istft(complex, params, factor) {
     // used by the model
     let normalizationFactor = tf.mul(ifftWindowTF, tf.tensor(winFactor));
 
-    // Apply squared window
+    // Apply window
     let res = tf.mul(irfftTF, normalizationFactor).arraySync();
 
-    // Overlap and add function (adds potentially overlapping frames of a signal)
+    // Overlap and add
     for(let i = 0; i < nFrames; i++){
         let sample = i * hopLength;
         let yTmp = res[i];
@@ -409,8 +407,6 @@ function add(arr0, arr1) {
     return out;
 }
 
-//https://stackoverflow.com/questions/29584420/how-to-manipulate-the-contents-of-an-audio-tag-and-create-derivative-audio-tags/30045041
-// TODO change this cuz theres copyright problems :(
 // Convert a audio-buffer segment to a Blob using WAVE representation
 function createWave(outputBuffer, path) {
     const length = outputBuffer.channelData[0].length * 2 * 2 + 44;

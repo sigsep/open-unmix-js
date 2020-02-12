@@ -25,7 +25,8 @@
   },
   "homepage": "https://github.com/sigsep/umx.js-pfe#readme",
   "devDependencies": {
-    "mocha": "^7.0.0"
+    "mocha": "^7.0.0",
+    "nyc": "^15.0.0"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^1.5.1",
