@@ -1,22 +1,18 @@
 const assert = require('assert');
 const tf = require('@tensorflow/tfjs-node');
-const code = require('../src/open-unmix')
+const openUnmix = require('../src/open-unmix')
+const config = require('../config/config.json');
 
-//Constants
-const FRAME_LENGTH = 2048;
-const HOP_LENGTH = 1024;
-const FFT_SIZE = 2048;
-const PATCH_LENGTH = 256
-const N_FRAMES = 256
+const decode = require('audio-decode');
+const Lame = require("node-lame").Lame;
 
-const WAVE_LENGTH = 220500;
 let signal
 
 // STFT-ISTFT params:
 const specParams = {
-    winLength: FRAME_LENGTH,
-    hopLength: HOP_LENGTH,
-    fftLength: FFT_SIZE
+    winLength: config.fourierParams.frameLength,
+    hopLength: config.fourierParams.hopLength,
+    fftLength: config.fourierParams.fftSize
 };
 
 const AUDIO_PATH = 'data/audio_example.mp3'
@@ -42,6 +38,45 @@ function generateSineWave(power){
     return retval
 }
 
+/**
+ * Returns decoded file as buffer
+ * @param path
+ * @return buffer to process
+ */
+async function decodeFile(path){
+    const decoder = new Lame({
+        output: "buffer",
+        bitrate: 192,
+    }).setFile(path);
+
+    return decoder
+        .decode()
+        .then(() => {
+            return decoder.getBuffer();
+        })
+        .catch(error => {
+            console.log(error)
+        });
+}
+
+/**
+ * Decode the buffer to float32Array with expected channels
+ * @param buffer
+ * @return AudioBuffer{
+ *     length,
+ *     numberOfChannels
+ *     sampleRate,
+ *     duration
+ *     _data:[]
+ *     _channelData[numberOfChannels]
+ * }
+ */
+async function decodeFromBuffer(buffer){
+    return decode(buffer, (err, audioBuffer) => {
+        return audioBuffer
+    });
+}
+
 let provider = range(10, 23)
 
 describe('[Correctness Test] Signal -> STFT -> ISTFT -> Signal', function() {
@@ -60,11 +95,11 @@ describe('[Correctness Test] Signal -> STFT -> ISTFT -> Signal', function() {
         let originalArray = signal
         let signalLength = signal.length
         //Perform pre processing (paddings and STFT)
-        signal = code.preProcessing(signal, specParams)
+        signal = openUnmix.preProcessing(signal, specParams)
         //Perform post processing (ISTFT)
-        let ISTFTResult = code.istft(signal, specParams, 1.0);
+        let ISTFTResult = openUnmix.istft(signal, specParams, 1.0);
         let posProcessed = tf.tensor1d(ISTFTResult)
-        posProcessed = code.padSignal(posProcessed, specParams, false).arraySync();
+        posProcessed = openUnmix.padSignal(posProcessed, specParams, false).arraySync();
         let processedLength = posProcessed.length
         let diffChannelLength = (processedLength - signalLength);
         let res = tf.losses.meanSquaredError(
@@ -85,14 +120,14 @@ describe('[Perfomance Test] Signal -> STFT -> ISTFT -> Signal', function () {
 
             console.time('test');
             //Perform pre processing (paddings and STFT)
-            signal = code.preProcessing(signal, specParams)
+            signal = openUnmix.preProcessing(signal, specParams)
 
             //Perform post processing (ISTFT)
-            let ISTFTResult = code.istft(signal, specParams, 1.0);
+            let ISTFTResult = openUnmix.istft(signal, specParams, 1.0);
 
             let posProcessed = tf.tensor1d(ISTFTResult)
 
-            posProcessed = code.padSignal(posProcessed, specParams, false).arraySync();
+            posProcessed = openUnmix.padSignal(posProcessed, specParams, false).arraySync();
             console.timeEnd('test');
 
             signal = []
@@ -107,14 +142,14 @@ describe('[Perfomance Test] Signal -> STFT -> ISTFT -> Signal', function () {
 
             console.time('test');
             //Perform pre processing (paddings and STFT)
-            signal = code.preProcessing(signal, specParams)
+            signal = openUnmix.preProcessing(signal, specParams)
 
             //Perform post processing (ISTFT)
-            let ISTFTResult = code.istft(signal, specParams, 1.0);
+            let ISTFTResult = openUnmix.istft(signal, specParams, 1.0);
 
             let posProcessed = tf.tensor1d(ISTFTResult)
 
-            posProcessed = code.padSignal(posProcessed, specParams, false).arraySync();
+            posProcessed = openUnmix.padSignal(posProcessed, specParams, false).arraySync();
             console.timeEnd('test');
 
             signal = []
@@ -136,17 +171,14 @@ describe('[Perfomance Test] Signal -> STFT -> ISTFT -> Signal', function () {
 describe('[White box - coverage] Music -> STFT -> ISTFT -> Music', function() {
     this.timeout(0);
     function makeTestModelSine(pow) {
-        it.skip('sine wave size 2^'+pow, async function(done) {
+        it.skip('sine wave size 2^'+pow, async function() {
             signal = generateSineWave(pow)
-
             console.time('test');
-            await code.loadModel()
-
-            await code.modelProcess('http://localhost:5000/model/model.json', signal, signal)
+            await openUnmix.loadModel(config.model.url)
+            await openUnmix.modelProcess(config.model.url, signal, signal)
             console.timeEnd('test');
-
             signal = []
-            done()
+            //done();
         });
     }
 
@@ -157,10 +189,10 @@ describe('[White box - coverage] Music -> STFT -> ISTFT -> Music', function() {
     it.skip('should return only the voice when using the model', async function(done) {
         this.timeout(0);
         console.log(tf.getBackend());
-        let decodedFile = await code.decodeFile(AUDIO_PATH)
-        let decodedFromBuffer = await code.decodeFromBuffer(decodedFile)
+        let decodedFile = await decodeFile(AUDIO_PATH)
+        let decodedFromBuffer = await decodeFromBuffer(decodedFile)
 
-        const numPatches = Math.floor(Math.floor((decodedFromBuffer.length - 1) / HOP_LENGTH) / PATCH_LENGTH) + 1;
+        const numPatches = Math.floor(Math.floor((decodedFromBuffer.length - 1) / config.fourierParams.hopLength) / config.modelInput.N_FRAMES) + 1;
 
         console.log("Num patches " + numPatches)
 
@@ -171,9 +203,9 @@ describe('[White box - coverage] Music -> STFT -> ISTFT -> Music', function() {
         let end = chunk
         for (let i = 0; i < numPatches; i++) {
             console.log("Start processing chunk: "+i)
-            const result0 = code.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
-            const result1 = code.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
-            let predict = await code.loadAndPredict('', [result0, result1], specParams)
+            const result0 = openUnmix.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
+            const result1 = openUnmix.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
+            let predict = await openUnmix.loadAndPredict('', [result0, result1], specParams)
             channel0_stem[i] = predict[0];
             channel1_stem[i] = predict[1];
             console.log("End processing chunk: "+i)
@@ -187,8 +219,8 @@ describe('[White box - coverage] Music -> STFT -> ISTFT -> Music', function() {
         let channelLength = decodedFromBuffer._channelData
         let processedLength = processedSignal0.length
 
-        processedSignal0 = code.insertZeros(processedSignal0, processedLength, channelLength, specParams)
-        processedSignal1 = code.insertZeros(processedSignal1, processedLength, channelLength, specParams)
+        processedSignal0 = openUnmix.insertZeros(processedSignal0, processedLength, channelLength, specParams)
+        processedSignal1 = openUnmix.insertZeros(processedSignal1, processedLength, channelLength, specParams)
 
         // Generate buffer dic to create waveFile
         let bufferOutput = {

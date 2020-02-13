@@ -1,25 +1,23 @@
 const tf = require('@tensorflow/tfjs-node');
+const fs = require('fs');
+const config = require('../config/config.json');
 
 tf.ENV.set('WEBGL_CONV_IM2COL', false);
 
-// Only used by node version
-const fs = require('fs');
-const decode = require('audio-decode');
-const Lame = require("node-lame").Lame;
-
-const FRAME_LENGTH = 2048
-const HOP_LENGTH = 1024
-const FFT_SIZE = 2048
-const SAMPLE_RATE = 44100
+// Fourier Params
+const FRAME_LENGTH = config.fourierParams.frameLength
+const HOP_LENGTH = config.fourierParams.hopLength
+const FFT_SIZE = config.fourierParams.fftSize
 
 // MODEL input dimensions
-const N_FREQUENCIES = 1025
-const N_FRAMES = 256
-const N_CHANNELS = 2
-const N_BATCHES = 1
+const N_FREQUENCIES = config.modelInput.N_FREQUENCIES
+const N_FRAMES = config.modelInput.N_FRAMES
+const N_CHANNELS = config.modelInput.N_CHANNELS
+const N_BATCHES = config.modelInput.N_BATCHES
 
-let modelPath_ = 'http://localhost:5000/model/model.json'
+let modelPath_
 
+// Enables production mode which disables correctness checks in favor of performance.
 tf.enableProdMode()
 
 let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
@@ -32,57 +30,27 @@ const specParams = {
 
 let model
 
-let aud = {
-}
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
+
+/**
+ *
+ * @param url
+ * @returns {Promise<GraphModel>}
+ */
 async function loadModel(url){
-    let modelPath = url || modelPath_
-    model = await tf.loadGraphModel(modelPath);
+    model = await tf.loadGraphModel(url)
 }
 
 /**
- * Returns decoded file as buffer
- * @param path
- * @return buffer to process
+ *
+ * @param url
+ * @param channel0
+ * @param channel1
+ * @returns {Promise<void>}
  */
-async function decodeFile(path){
-    const decoder = new Lame({
-        output: "buffer",
-        bitrate: 192,
-    }).setFile(path);
-
-    return decoder
-        .decode()
-        .then(() => {
-            return decoder.getBuffer();
-        })
-        .catch(error => {
-            console.log(error)
-        });
-}
-
-
-/**
- * Decode the buffer to float32Array with expected channels
- * @param buffer
- * @return AudioBuffer{
- *     length,
- *     numberOfChannels
- *     sampleRate,
- *     duration
- *     _data:[]
- *     _channelData[numberOfChannels]
- * }
- */
-async function decodeFromBuffer(buffer){
-    return decode(buffer, (err, audioBuffer) => {
-        return audioBuffer
-    });
-}
-
-async function modelProcess(url,a, b){
+async function modelProcess(url, channel0, channel1){
     modelPath_ = url || modelPath_
-    const numPatches = Math.floor(Math.floor((a.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
+    const numPatches = Math.floor(Math.floor((channel0.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
 
     console.log("Num patches " + numPatches)
 
@@ -93,8 +61,8 @@ async function modelProcess(url,a, b){
     let end = chunk
     for (let i = 0; i < numPatches; i++) {
         console.log("Start processing chunk: "+i)
-        const result0 = preProcessing(a.slice(start, end), specParams);
-        const result1 = preProcessing(b.slice(start, end), specParams);
+        const result0 = preProcessing(channel0.slice(start, end), specParams);
+        const result1 = preProcessing(channel1.slice(start, end), specParams);
         let predict = await modelPredict([result0, result1], specParams)
         vocal_stem[0][i] = predict[0][0]
         vocal_stem[1][i] = predict[0][1]
@@ -479,12 +447,9 @@ function createWave(outputBuffer, path) {
 
 exports.preProcessing = preProcessing;
 exports.istft = istft;
-module.exports.decodeFile = decodeFile;
 exports.postProcessing = postProcessing;
-exports.decodeFromBuffer = decodeFromBuffer
 exports.createWave = createWave
 exports.loadAndPredict = modelPredict
 exports.loadModel = loadModel
 exports.padSignal = padSignal
-exports.aud = aud
 exports.modelProcess = modelProcess
