@@ -161,6 +161,9 @@ async function modelPredict(resultSTFT, specParams){
     result_background = [[...result_background[0],...background[0]], [...result_background[1],...background[1]]]
     //}
 
+    input["mix_angle"].dispose()
+    input["model_input"].dispose()
+    
     return [result_vocals, result_background]
 }
 

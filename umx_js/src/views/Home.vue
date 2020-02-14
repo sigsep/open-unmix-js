@@ -30,6 +30,7 @@
                             :options="dropOptions"
                             @vdropzone-file-added="renderAudioTag"
                             @vdropzone-complete="loadFile"
+                            @vdropzone-total-upload-progress="vprogress"
                             v-if="shouldRenderDropzone"
                     ></vue-dropzone>
 
@@ -101,6 +102,7 @@ export default {
     return {
       dropOptions: {
         url: "https://httpbin.org/post",
+        thumbnailWidth: 150,
         maxFilesize: 50, // MB
         maxFiles: 1,
         dictDefaultMessage: 'Drag your files here or click in this area.',
@@ -123,7 +125,10 @@ export default {
       tracklist: [],
       fileName:"",
       isLoading: true,
-      isDisabled: true
+      isDisabled: true,
+      uploadProgress: false,
+      progress: false,
+      myProgress: 0,
     }
   },
   mounted: function () {
@@ -185,6 +190,11 @@ export default {
       link.click()
       URL.revokeObjectURL( link.href);
       link.remove();
+    },
+    vprogress(totalProgress, totalBytes, totalBytesSent) {
+      this.progress = true
+      this.myProgress = Math.floor(totalProgress)
+      // window.toastr.success('', 'Event : vdropzone-sending')
     }
   },
   computed: {
