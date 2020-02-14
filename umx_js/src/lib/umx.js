@@ -57,11 +57,9 @@ function decodeFile(fileName, arrBuffer){
 
 
 async function modelProcess(url){
-    let path = url + "model/model.json"
     const numPatches = Math.floor(Math.floor((aud.src[0].length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
-
     console.log("Num patches " + numPatches)
-    model = await tf.loadGraphModel(path);
+    model = await tf.loadGraphModel(url);
     let start = 0
     let vocal_stem = [[],[]];
     let back_stem = [[],[]];

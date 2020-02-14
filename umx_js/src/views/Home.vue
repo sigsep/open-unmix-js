@@ -42,8 +42,8 @@
                         <v-btn
                                 color="secondary"
                                 v-on:click="processSong"
-                                ref="processButton"
-                                disabled
+                                :disabled="isDisabled"
+                                :loading="isLoading"
                                 block
                         >
                             Process Song
@@ -118,10 +118,12 @@ export default {
         dark: true,
         streams: []
       },
-      publicPath: process.env.BASE_URL,
+      modelURL: process.env.BASE_URL,
       trackstoload: [],
       tracklist: [],
-      fileName:""
+      fileName:"",
+      isLoading: true,
+      isDisabled: true
     }
   },
   mounted: function () {
@@ -143,18 +145,19 @@ export default {
       this.$refs.ogAudio.src =  blob.createObjectURL(file)
       this.playerconf.title = file.name;
       this.fileName = file.name.substr(0, file.name.lastIndexOf('.'));
-      this.$refs.processButton.disabled = false
+      this.isLoading = false
+      this.isDisabled = false
     },
 
     async processSong(){
-      this.$refs.processButton.loading = true
-      modelProcess(this.publicPath).then((result) =>
+      this.isLoading = true
+      const path = this.modelURL + "model/model.json"
+      modelProcess(path).then((result) =>
         {
           this.shouldRenderSong = false
           this.shouldRenderDropzone = false
           this.shouldRenderPlayer = true
           this.combKey = Math.ceil(Math.random() * 10000)
-          let blob = window.URL || window.webkitURL;
           let trackstoload = []
           for (let stem of result.stems) {
             trackstoload.push(
