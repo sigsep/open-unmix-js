@@ -1,67 +1,59 @@
-import * as tf from "@tensorflow/tfjs"
+const tf = require('@tensorflow/tfjs-node');
+const fs = require('fs');
+const config = require('../config/config.json');
 
 tf.ENV.set('WEBGL_CONV_IM2COL', false);
 
-const DEBUG = true
-
-const FRAME_LENGTH = 2048
-const HOP_LENGTH = 1024
-const FFT_SIZE = 2048
-const SAMPLE_RATE = 44100
+// Fourier Params
+const FRAME_LENGTH = config.fourierParams.frameLength
+const HOP_LENGTH = config.fourierParams.hopLength
+const FFT_SIZE = config.fourierParams.fftSize
 
 // MODEL input dimensions
-const N_FREQUENCIES = 1025
-const N_FRAMES = 256
-const N_CHANNELS = 2
-const N_BATCHES = 1
+const N_FREQUENCIES = config.modelInput.N_FREQUENCIES
+const N_FRAMES = config.modelInput.N_FRAMES
+const N_CHANNELS = config.modelInput.N_CHANNELS
+const N_BATCHES = config.modelInput.N_BATCHES
 
-// STFT-ISTFT params:
+let modelPath_
+
+// Enables production mode which disables correctness checks in favor of performance.
+tf.enableProdMode()
+
+let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
+
 const specParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
     fftLength: FFT_SIZE
 };
 
-tf.enableProdMode()
-
-let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
 let model
+
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
-let aud = {}
 
-function readFile(file){ // Maybe rename this to be different from japanese guy?
-    const fileReader = new FileReader()
-    fileReader.onerror = function(){ console.log("Error when reading the file") }
-    fileReader.onload = function(file){
-        decodeFile(file.name, fileReader.result)
-    }
-    fileReader.readAsArrayBuffer(file)
+/**
+ *
+ * @param url
+ * @returns {Promise<GraphModel>}
+ */
+async function loadModel(url){
+    model = await tf.loadGraphModel(url)
 }
 
-function decodeFile(fileName, arrBuffer){
-    const audioContext = new AudioContext({"sampleRate":SAMPLE_RATE})
-    audioContext.decodeAudioData(arrBuffer,
-        function(data){
-            const source = audioContext.createBufferSource()
-            source.buffer = data
-            if(source.buffer.sampleRate != SAMPLE_RATE || source.buffer.numberOfChannels != 2){
-                console.log(source.buffer.sampleRate, source.buffer.numberOfChannelst)
-                alert("Sorry, we can oly process songs with a 44100 sample rate and 2 channels")
-                throw new Error('Cannot process song')
-            }
-            aud.src = [source.buffer.getChannelData(0), source.buffer.getChannelData(1)]
-            return
-        }
-    , () => {console.log("Error on decoding audio context")})
-}
-
-
-async function modelProcess(url){
-    let path = url + "model/model.json"
-    const numPatches = Math.floor(Math.floor((aud.src[0].length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
+/**
+ *
+ * @param url
+ * @param channel0
+ * @param channel1
+ * @returns {Promise<void>}
+ */
+async function modelProcess(url, channel0, channel1){
+    modelPath_ = url || modelPath_
+    const numPatches = Math.floor(Math.floor((channel0.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
 
     console.log("Num patches " + numPatches)
-    model = await tf.loadGraphModel(path);
+
     let start = 0
     let vocal_stem = [[],[]];
     let back_stem = [[],[]];
@@ -69,8 +61,8 @@ async function modelProcess(url){
     let end = chunk
     for (let i = 0; i < numPatches; i++) {
         console.log("Start processing chunk: "+i)
-        const result0 = preProcessing(aud.src[0].slice(start, end), specParams);
-        const result1 = preProcessing(aud.src[1].slice(start, end), specParams);
+        const result0 = preProcessing(channel0.slice(start, end), specParams);
+        const result1 = preProcessing(channel1.slice(start, end), specParams);
         let predict = await modelPredict([result0, result1], specParams)
         vocal_stem[0][i] = predict[0][0]
         vocal_stem[1][i] = predict[0][1]
@@ -83,40 +75,24 @@ async function modelProcess(url){
         result1.dispose()
     }
 
-    let vocals = createBuffer(vocal_stem, specParams)
-    let back = createBuffer(back_stem,specParams)
-
-    let buff_vocals = createWave(vocals, "vocals.wav")
-    let buff_back = createWave(back, "accompaniment.wav")
-    //saveFile("Example.wav", "audio/wav", buff);
-    return {
-        stems:[
-            {
-                name:"vocals",
-                data:buff_vocals
-            },
-            {
-                name:"accompaniment",
-                data:buff_back
-            }
-        ]
-    }
-}
-
-
-function createBuffer(channels, specParams){
-    let processedSignal0 = channels[0].flat()
-    let processedSignal1 = channels[1].flat()
-
-    processedSignal0 = processedSignal0.slice(0, aud.src[0].length)
-    processedSignal1 = processedSignal1.slice(0, aud.src[1].length)
-
-    // Generate buffer dic to create waveFile
-    return {
-        numberOfChannels: 2,
-        sampleRate: 44100,
-        channelData: [processedSignal0, processedSignal1]
-    }
+    // let vocals = createBuffer(vocal_stem, specParams)
+    // let back = createBuffer(back_stem,specParams)
+    //
+    // let buff_vocals = createWave(vocals, "vocals.wav")
+    // let buff_back = createWave(back, "accompaniment.wav")
+    // //saveFile("Example.wav", "audio/wav", buff);
+    // return {
+    //     stems:[
+    //         {
+    //             name:"vocals",
+    //             data:buff_vocals
+    //         },
+    //         {
+    //             name:"accompaniment",
+    //             data:buff_back
+    //         }
+    //     ]
+    // }
 }
 
 /**
@@ -132,11 +108,10 @@ async function modelPredict(resultSTFT, specParams){
     let number_of_frames = resultSTFT[0].shape[0]
 
     let input = createInput(resultSTFT[0], resultSTFT[1], 0)
+
     // prediction
     const output = tf.tidy(() => {
         return model.predict(input["model_input"]);
-        // let paddedPredict = model.predict(input["model_input"]);
-        // return paddedPredict.slice([(PADDING/2), 0, 0, 0],[(N_FRAMES-PADDING), 1, 2, N_FREQUENCIES])
     })
 
     let estimate = tf.tidy(() => {
@@ -201,7 +176,7 @@ function preProcessing(channel, specParams){
  */
 function padSignal(signal, specParams, forward){
     let pad = Math.floor((specParams.fftLength - specParams.hopLength))
-    //Insert padding
+    //Insert padding)
     if(forward){
         signal = tf.pad(signal, [[pad, pad]])
         return signal
@@ -222,13 +197,10 @@ function padSignal(signal, specParams, forward){
 function postProcessing( estimate, specParams, factor){
     // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
     let estimateReshaped = tf.tidy(() => {
-
         let estimateReshapedR = tf.real(estimate)
         let estimateReshapedI = tf.imag(estimate)
-
         estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
         estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
-
         return [tf.complex(estimateReshapedR[0], estimateReshapedI[0]),tf.complex(estimateReshapedR[1], estimateReshapedI[1])]
     })
 
@@ -373,7 +345,7 @@ function inverse_stft_window_fn(frame_step, frame_length, forward_window_fn = (f
     const overlaps = Math.ceil(frame_length/frame_step) // -(-frame_length / frame_step) but js
     denom = tf.pad(denom, [[0, overlaps * frame_step - frame_length]])
     denom =  denom.reshape([overlaps, frame_step])
-    denom = tf.sum(denom, 0, true)
+    denom = tf.sum(denom, 0, keepdims=true)
     denom = tf.tile(denom, [overlaps, 1])
     denom = denom.reshape([overlaps * frame_step])
     return tf.div(forward_window, denom.slice(0, frame_length))//forward_window / denom.slice(0, frame_length)
@@ -443,10 +415,24 @@ function createWave(outputBuffer, path) {
         offset++;                                     // next source sample
     }
 
+    // create Blob
+
+    //used by node
+    let buff = new Buffer.from(buffer)
+    fs.open(path, 'w', function(err, fd) {
+        if (err) {
+            throw 'error opening file: ' + err;
+        }
+        fs.write(fd, buff, 0, buff.length, null, function(err) {
+            if (err) throw 'error writing file: ' + err;
+            fs.close(fd, function() {
+                console.log('file written');
+            })
+        });
+    });
 
     //used by pure js
-    //return buffer
-    return new Blob([buffer], {type: "audio/wav"});
+    // return new Blob([buffer], {type: "audio/wav"});
 
     function setUint16(data) {
         view.setUint16(pos, data, true);
@@ -459,19 +445,11 @@ function createWave(outputBuffer, path) {
     }
 }
 
-function saveFile (name, type, data) {
-    if (data != null && navigator.msSaveBlob)
-        return navigator.msSaveBlob(new Blob([data], { type: type }), name);
-    var a = document.createElement("a");
-    // document.body.appendChild(a);
-    a.style = "display: none";
-    var url = window.URL.createObjectURL(new Blob([data], {type: type}));
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    a.remove();
-}
-
-export {readFile, modelProcess}
+exports.preProcessing = preProcessing;
+exports.istft = istft;
+exports.postProcessing = postProcessing;
+exports.createWave = createWave
+exports.loadAndPredict = modelPredict
+exports.loadModel = loadModel
+exports.padSignal = padSignal
+exports.modelProcess = modelProcess

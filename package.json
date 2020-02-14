@@ -25,12 +25,14 @@
   },
   "homepage": "https://github.com/sigsep/umx.js-pfe#readme",
   "devDependencies": {
-    "mocha": "^7.0.0"
+    "mocha": "^7.0.0",
+    "nyc": "^15.0.0"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^1.5.1",
     "@tensorflow/tfjs-node": "^1.5.1",
     "howler": "^2.1.3",
+    "node-fetch": "^2.6.0",
     "node-lame": "^1.2.0",
     "vue-headful": "^2.1.0"
   }
