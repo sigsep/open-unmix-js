@@ -1,6 +1,9 @@
 const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const config = require('../config/config.json');
+const {
+    Worker, isMainThread, parentPort, workerData
+} = require('worker_threads');
 
 tf.ENV.set('WEBGL_CONV_IM2COL', false);
 
@@ -445,6 +448,21 @@ function createWave(outputBuffer, path) {
     }
 }
 
+function testWebWorkers(){
+    if (isMainThread) {
+        console.log("here")
+        // This re-loads the current file inside a Worker instance.
+        let test = new Worker(__filename);
+        console.log(test)
+    } else {
+        console.log('Inside Worker!');
+        console.log(isMainThread);  // Prints 'false'.
+    }
+
+
+
+}
+
 exports.preProcessing = preProcessing;
 exports.istft = istft;
 exports.postProcessing = postProcessing;
@@ -453,3 +471,4 @@ exports.loadAndPredict = modelPredict
 exports.loadModel = loadModel
 exports.padSignal = padSignal
 exports.modelProcess = modelProcess
+exports.testWebWorkers = testWebWorkers
