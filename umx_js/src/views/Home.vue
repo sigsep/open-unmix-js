@@ -23,16 +23,16 @@
         </div>
         <v-container bg grid-list-md text-xs-center>
             <v-layout row wrap align-center>
-                <v-flex>
-
-                    <vue-dropzone
-                            id="drop"
-                            :options="dropOptions"
-                            @vdropzone-file-added="renderAudioTag"
-                            @vdropzone-complete="loadFile"
-                            @vdropzone-total-upload-progress="vprogress"
-                            v-if="shouldRenderDropzone"
-                    ></vue-dropzone>
+                <v-flex >
+                    <!-- TODO: Add normal input form ("click here") file upload workflow-->
+                    <div @drop.prevent="addFile" @dragover.prevent v-if="shouldRenderDropzone" id="dropzone">
+                     <h2>Files to Upload (Drag them over)</h2>
+                      <ul>
+                        <li v-for="file in files"  v-bind:key="file.name">
+                          {{ file.name }} ({{ file.size | kb }} kb) <button @click="removeFile(file)" title="Remove">X</button>
+                        </li>
+                      </ul>
+                    </div>
 
                     <div v-if=" shouldRenderSong">
                         <audio ref="ogAudio" controls>
@@ -93,7 +93,6 @@ import Player from './../components/Player.vue'
 import axios from 'axios'
 import {readFile, modelProcess} from './../lib/umx.js'
 
-// import VueWaveSurfer from 'vue-wave-surfer' //remember to put it in components again
 
 export default {
   name: 'Home',
@@ -101,14 +100,16 @@ export default {
   data () {
     return {
       dropOptions: {
-        url: "https://httpbin.org/post",
+        url: function(file){
+          
+        },
         thumbnailWidth: 150,
         maxFilesize: 50, // MB
         maxFiles: 1,
         dictDefaultMessage: 'Drag your files here or click in this area.',
       },
       shouldRenderPlayer: false,
-      shouldRenderSong: false,
+      shouldRenderSong: true,
       shouldRenderDropzone:true,
       dark: true,
       player: null,
@@ -120,11 +121,10 @@ export default {
         dark: true,
         streams: []
       },
-      modelURL: process.env.BASE_URL,
       trackstoload: [],
       tracklist: [],
       fileName:"",
-      isLoading: true,
+      isLoading: false,
       isDisabled: true,
       uploadProgress: false,
       progress: false,
@@ -138,26 +138,31 @@ export default {
 
   },
   methods: {
-    /* eslint-disable */
-    renderAudioTag(file){
-       this.shouldRenderSong = true
-    },
-    /* eslint-enable */
-
-    loadFile: function(file) {
+ 
+    addFile(e) {
+      console.log("a")
+      let droppedFiles = e.dataTransfer.files;
+      if(!droppedFiles) return;
+      console.log("b")
       let blob = window.URL || window.webkitURL;
-      readFile(file)
-      this.$refs.ogAudio.src =  blob.createObjectURL(file)
-      this.playerconf.title = file.name;
-      this.fileName = file.name.substr(0, file.name.lastIndexOf('.'));
-      this.isLoading = false
-      this.isDisabled = false
+      ([...droppedFiles]).forEach(file => {
+        console.log(file)
+        this.$refs.ogAudio.src =  blob.createObjectURL(file)
+        this.playerconf.title = file.name;
+        readFile(file)
+        this.isDisabled = false
+      });
+    },
+
+    removeFile(file){
+      this.files = this.files.filter(f => {
+        return f != file;
+      });      
     },
 
     async processSong(){
       this.isLoading = true
-      const path = this.modelURL + "model/model.json"
-      modelProcess(path).then((result) =>
+      modelProcess().then((result) =>
         {
           this.shouldRenderSong = false
           this.shouldRenderDropzone = false
@@ -191,11 +196,6 @@ export default {
       URL.revokeObjectURL( link.href);
       link.remove();
     },
-    vprogress(totalProgress, totalBytes, totalBytesSent) {
-      this.progress = true
-      this.myProgress = Math.floor(totalProgress)
-      // window.toastr.success('', 'Event : vdropzone-sending')
-    }
   },
   computed: {
 
@@ -210,18 +210,13 @@ export default {
 }
 
 
- #drop {
+ #dropzone {
     height: 200px;
     padding: 40px;
     color: white;
     text-align: center;
     background: #303030;
 }
-
-
-#drop .dz-success-mark, .dz-error-mark {
-    display: none;
-  }
 
 .select {
   z-index: 1000
