@@ -24,16 +24,24 @@
         <v-container bg grid-list-md text-xs-center>
             <v-layout row wrap align-center>
                 <v-flex >
-                    <!-- TODO: Add normal input form ("click here") file upload workflow-->
-                    <div @drop.prevent="addFile" @dragover.prevent v-if="shouldRenderDropzone" id="dropzone">
-                     <h2>Files to Upload (Drag them over)</h2>
-                      <ul>
-                        <li v-for="file in files"  v-bind:key="file.name">
-                          {{ file.name }} ({{ file.size | kb }} kb) <button @click="removeFile(file)" title="Remove">X</button>
-                        </li>
-                      </ul>
-                    </div>
-
+                      <v-btn color="secondary" v-on:click="reset" v-if="!isDisabled&&shouldRenderDropzone">Reset</v-btn>
+                      <label for="clicable_file">
+                      <div @drop.prevent="addFilesDrop" @dragover.prevent v-if="shouldRenderDropzone" id="dropzone">
+                      <h2>Drag files or click in this area to upload</h2>
+                        <ul>
+                          <li v-for="file in files"  v-bind:key="file.name">
+                            {{ file.name }} ({{ file.size / 1024}} kb)
+                          </li>
+                        </ul>
+                      </div>
+                      </label>
+                      <input type="file" 
+                              style="visibility:hidden" 
+                              id="clicable_file" 
+                              v-if="shouldRenderDropzone"
+                              @change="addFilesInputTag"
+                      />
+                    
                     <div v-if=" shouldRenderSong">
                         <audio ref="ogAudio" controls>
                             <p>Your browser does not have the <code>audio</code> tag</p>
@@ -99,18 +107,11 @@ export default {
   components: { Player, vueDropzone, vueHeadful},
   data () {
     return {
-      dropOptions: {
-        url: function(file){
-          
-        },
-        thumbnailWidth: 150,
-        maxFilesize: 50, // MB
-        maxFiles: 1,
-        dictDefaultMessage: 'Drag your files here or click in this area.',
-      },
+      files:[],
       shouldRenderPlayer: false,
       shouldRenderSong: true,
       shouldRenderDropzone:true,
+      disableInputTag: false,
       dark: true,
       player: null,
       combKey: 42,
@@ -138,26 +139,34 @@ export default {
 
   },
   methods: {
- 
-    addFile(e) {
-      console.log("a")
-      let droppedFiles = e.dataTransfer.files;
-      if(!droppedFiles) return;
-      console.log("b")
+
+    addFile(files) {
       let blob = window.URL || window.webkitURL;
-      ([...droppedFiles]).forEach(file => {
-        console.log(file)
+      ([...files]).forEach(file => {
         this.$refs.ogAudio.src =  blob.createObjectURL(file)
         this.playerconf.title = file.name;
+        this.files.push(file)
         readFile(file)
         this.isDisabled = false
+        this.disableInputTag = true
       });
     },
 
-    removeFile(file){
-      this.files = this.files.filter(f => {
-        return f != file;
-      });      
+    addFilesDrop(e) {
+      let droppedFiles = e.dataTransfer.files;
+      if(!droppedFiles) return;
+      this.addFile(droppedFiles)
+    },
+
+    addFilesInputTag(e){
+      let chosenFiles = e.target.files;
+      if(!chosenFiles) return;
+      this.addFile(chosenFiles)
+    },
+
+    reset(file){
+      this.isDisabled = true
+      this.files = []
     },
 
     async processSong(){
