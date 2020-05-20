@@ -23,16 +23,25 @@
         </div>
         <v-container bg grid-list-md text-xs-center>
             <v-layout row wrap align-center>
-                <v-flex>
-
-                    <vue-dropzone
-                            id="drop"
-                            :options="dropOptions"
-                            @vdropzone-file-added="renderAudioTag"
-                            @vdropzone-complete="loadFile"
-                            v-if="shouldRenderDropzone"
-                    ></vue-dropzone>
-
+                <v-flex >
+                      <v-btn color="secondary" v-on:click="reset" v-if="!isDisabled&&shouldRenderDropzone">Reset</v-btn>
+                      <label for="clicable_file">
+                      <div @drop.prevent="addFilesDrop" @dragover.prevent v-if="shouldRenderDropzone" id="dropzone">
+                      <h2>Drag files or click in this area to upload</h2>
+                        <ul>
+                          <li v-for="file in files"  v-bind:key="file.name">
+                            {{ file.name }} ({{ file.size / 1024}} kb)
+                          </li>
+                        </ul>
+                      </div>
+                      </label>
+                      <input type="file" 
+                              style="visibility:hidden" 
+                              id="clicable_file" 
+                              v-if="shouldRenderDropzone"
+                              @change="addFilesInputTag"
+                      />
+                    
                     <div v-if=" shouldRenderSong">
                         <audio ref="ogAudio" controls>
                             <p>Your browser does not have the <code>audio</code> tag</p>
@@ -42,8 +51,8 @@
                         <v-btn
                                 color="secondary"
                                 v-on:click="processSong"
-                                ref="processButton"
-                                disabled
+                                :disabled="isDisabled"
+                                :loading="isLoading"
                                 block
                         >
                             Process Song
@@ -92,22 +101,17 @@ import Player from './../components/Player.vue'
 import axios from 'axios'
 import {readFile, modelProcess} from './../lib/umx.js'
 
-// import VueWaveSurfer from 'vue-wave-surfer' //remember to put it in components again
 
 export default {
   name: 'Home',
   components: { Player, vueDropzone, vueHeadful},
   data () {
     return {
-      dropOptions: {
-        url: "https://httpbin.org/post",
-        maxFilesize: 50, // MB
-        maxFiles: 1,
-        dictDefaultMessage: 'Drag your files here or click in this area.',
-      },
+      files:[],
       shouldRenderPlayer: false,
-      shouldRenderSong: false,
+      shouldRenderSong: true,
       shouldRenderDropzone:true,
+      disableInputTag: false,
       dark: true,
       player: null,
       combKey: 42,
@@ -118,10 +122,14 @@ export default {
         dark: true,
         streams: []
       },
-      publicPath: process.env.BASE_URL,
       trackstoload: [],
       tracklist: [],
-      fileName:""
+      fileName:"",
+      isLoading: false,
+      isDisabled: true,
+      uploadProgress: false,
+      progress: false,
+      myProgress: 0,
     }
   },
   mounted: function () {
@@ -131,30 +139,44 @@ export default {
 
   },
   methods: {
-    /* eslint-disable */
-    renderAudioTag(file){
-       this.shouldRenderSong = true
-    },
-    /* eslint-enable */
 
-    loadFile: function(file) {
+    addFile(files) {
       let blob = window.URL || window.webkitURL;
-      readFile(file)
-      this.$refs.ogAudio.src =  blob.createObjectURL(file)
-      this.playerconf.title = file.name;
-      this.fileName = file.name.substr(0, file.name.lastIndexOf('.'));
-      this.$refs.processButton.disabled = false
+      ([...files]).forEach(file => {
+        this.$refs.ogAudio.src =  blob.createObjectURL(file)
+        this.playerconf.title = file.name;
+        this.files.push(file)
+        readFile(file)
+        this.isDisabled = false
+        this.disableInputTag = true
+      });
+    },
+
+    addFilesDrop(e) {
+      let droppedFiles = e.dataTransfer.files;
+      if(!droppedFiles) return;
+      this.addFile(droppedFiles)
+    },
+
+    addFilesInputTag(e){
+      let chosenFiles = e.target.files;
+      if(!chosenFiles) return;
+      this.addFile(chosenFiles)
+    },
+
+    reset(file){
+      this.isDisabled = true
+      this.files = []
     },
 
     async processSong(){
-      this.$refs.processButton.loading = true
-      modelProcess(this.publicPath).then((result) =>
+      this.isLoading = true
+      modelProcess().then((result) =>
         {
           this.shouldRenderSong = false
           this.shouldRenderDropzone = false
           this.shouldRenderPlayer = true
           this.combKey = Math.ceil(Math.random() * 10000)
-          let blob = window.URL || window.webkitURL;
           let trackstoload = []
           for (let stem of result.stems) {
             trackstoload.push(
@@ -182,7 +204,7 @@ export default {
       link.click()
       URL.revokeObjectURL( link.href);
       link.remove();
-    }
+    },
   },
   computed: {
 
@@ -197,18 +219,13 @@ export default {
 }
 
 
- #drop {
+ #dropzone {
     height: 200px;
     padding: 40px;
     color: white;
     text-align: center;
     background: #303030;
 }
-
-
-#drop .dz-success-mark, .dz-error-mark {
-    display: none;
-  }
 
 .select {
   z-index: 1000

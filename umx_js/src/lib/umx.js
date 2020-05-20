@@ -24,6 +24,7 @@ const specParams = {
 
 tf.enableProdMode()
 
+const BASE_URL = "https://storage.googleapis.com/open-unmix-models/open-unmix-js/model.json"
 let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
 let model
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
@@ -57,10 +58,9 @@ function decodeFile(fileName, arrBuffer){
 
 
 async function modelProcess(url){
-    let path = url + "model/model.json"
     const numPatches = Math.floor(Math.floor((aud.src[0].length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
-
     console.log("Num patches " + numPatches)
+    let path = url || BASE_URL
     model = await tf.loadGraphModel(path);
     let start = 0
     let vocal_stem = [[],[]];
@@ -163,6 +163,9 @@ async function modelPredict(resultSTFT, specParams){
     result_background = [[...result_background[0],...background[0]], [...result_background[1],...background[1]]]
     //}
 
+    input["mix_angle"].dispose()
+    input["model_input"].dispose()
+    
     return [result_vocals, result_background]
 }
 
