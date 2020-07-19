@@ -1,6 +1,6 @@
 const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
-const config = require('../config/config.json');
+const config = require('./config/config.json');
 
 tf.ENV.set('WEBGL_CONV_IM2COL', false);
 

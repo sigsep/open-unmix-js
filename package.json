@@ -4,7 +4,7 @@
   "description": "A package that contains an STFT and ISTFT implementation, and a tfjs model loader",
   "main": "index.js",
   "directories": {
-    "test": "test"
+    "test": "src/test"
   },
   "scripts": {
     "test": "mocha"

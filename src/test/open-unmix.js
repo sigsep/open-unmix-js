@@ -1,6 +1,6 @@
 const assert = require('assert');
 const tf = require('@tensorflow/tfjs-node');
-const openUnmix = require('../src/open-unmix')
+const openUnmix = require('../open-unmix')
 const config = require('../config/config.json');
 
 const decode = require('audio-decode');
