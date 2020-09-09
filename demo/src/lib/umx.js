@@ -2,7 +2,7 @@ import * as tf from "@tensorflow/tfjs"
 
 tf.ENV.set('WEBGL_CONV_IM2COL', false);
 
-const DEBUG = true
+const DEBUG = false
 
 const FRAME_LENGTH = 2048
 const HOP_LENGTH = 1024
@@ -16,16 +16,16 @@ const N_CHANNELS = 2
 const N_BATCHES = 1
 
 // STFT-ISTFT params:
+// Enables production mode which disables correctness checks in favor of performance.
+tf.enableProdMode()
+let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH, FRAME_LENGTH)
 const specParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
     fftLength: FFT_SIZE
 };
 
-tf.enableProdMode()
-
 const BASE_URL = "https://storage.googleapis.com/open-unmix-models/open-unmix-js/model.json"
-let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
 let model
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 let aud = {}
@@ -132,11 +132,10 @@ async function modelPredict(resultSTFT, specParams){
     let number_of_frames = resultSTFT[0].shape[0]
 
     let input = createInput(resultSTFT[0], resultSTFT[1], 0)
+
     // prediction
     const output = tf.tidy(() => {
         return model.predict(input["model_input"]);
-        // let paddedPredict = model.predict(input["model_input"]);
-        // return paddedPredict.slice([(PADDING/2), 0, 0, 0],[(N_FRAMES-PADDING), 1, 2, N_FREQUENCIES])
     })
 
     let estimate = tf.tidy(() => {
@@ -165,7 +164,7 @@ async function modelPredict(resultSTFT, specParams){
 
     input["mix_angle"].dispose()
     input["model_input"].dispose()
-    
+
     return [result_vocals, result_background]
 }
 

@@ -16,12 +16,10 @@ const N_CHANNELS = config.modelInput.N_CHANNELS
 const N_BATCHES = config.modelInput.N_BATCHES
 
 let modelPath_
-
 // Enables production mode which disables correctness checks in favor of performance.
 tf.enableProdMode()
 
-let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH,FRAME_LENGTH)
-
+let ifftWindowTF = inverse_stft_window_fn(HOP_LENGTH, FRAME_LENGTH)
 const specParams = {
     winLength: FRAME_LENGTH,
     hopLength: HOP_LENGTH,
@@ -138,6 +136,9 @@ async function modelPredict(resultSTFT, specParams){
     result_background = [[...result_background[0],...background[0]], [...result_background[1],...background[1]]]
     //}
 
+    input["mix_angle"].dispose()
+    input["model_input"].dispose()
+
     return [result_vocals, result_background]
 }
 
@@ -176,7 +177,7 @@ function preProcessing(channel, specParams){
  */
 function padSignal(signal, specParams, forward){
     let pad = Math.floor((specParams.fftLength - specParams.hopLength))
-    //Insert padding)
+    //Insert padding
     if(forward){
         signal = tf.pad(signal, [[pad, pad]])
         return signal
@@ -197,10 +198,13 @@ function padSignal(signal, specParams, forward){
 function postProcessing( estimate, specParams, factor){
     // Reshaping to separate channels and remove "batch" dimension, so we can compute the istft
     let estimateReshaped = tf.tidy(() => {
+
         let estimateReshapedR = tf.real(estimate)
         let estimateReshapedI = tf.imag(estimate)
+
         estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
         estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+
         return [tf.complex(estimateReshapedR[0], estimateReshapedI[0]),tf.complex(estimateReshapedR[1], estimateReshapedI[1])]
     })
 
