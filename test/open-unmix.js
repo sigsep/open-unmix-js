@@ -186,51 +186,16 @@ describe('[White box - coverage] Music -> STFT -> ISTFT -> Music', function() {
         makeTestModelSine(provider[i]);
     }
 
-    it.skip('should return only the voice when using the model', async function(done) {
+    it('should return only the voice when using the model', async function(done) {
         this.timeout(0);
-        console.log(tf.getBackend());
         let decodedFile = await decodeFile(AUDIO_PATH)
         let decodedFromBuffer = await decodeFromBuffer(decodedFile)
 
-        const numPatches = Math.floor(Math.floor((decodedFromBuffer.length - 1) / config.fourierParams.hopLength) / config.modelInput.N_FRAMES) + 1;
+        await openUnmix.loadModel(config.model.url)
 
-        console.log("Num patches " + numPatches)
+        let buff = await openUnmix.modelProcess(config.model.url, decodedFromBuffer._channelData[0], decodedFromBuffer._channelData[1])
 
-        let start = 0
-        let channel0_stem = [];
-        let channel1_stem = [];
-        let chunk = Math.floor(decodedFromBuffer.length / numPatches)
-        let end = chunk
-        for (let i = 0; i < numPatches; i++) {
-            console.log("Start processing chunk: "+i)
-            const result0 = openUnmix.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
-            const result1 = openUnmix.preProcessing(decodedFromBuffer._channelData[0].slice(start, end), specParams);
-            let predict = await openUnmix.loadAndPredict('', [result0, result1], specParams)
-            channel0_stem[i] = predict[0];
-            channel1_stem[i] = predict[1];
-            console.log("End processing chunk: "+i)
-            start+=chunk+1
-            end = start+chunk
-        }
-
-        let processedSignal0 = channel0_stem.flat()
-        let processedSignal1 = channel1_stem.flat()
-
-        let channelLength = decodedFromBuffer._channelData
-        let processedLength = processedSignal0.length
-
-        processedSignal0 = openUnmix.insertZeros(processedSignal0, processedLength, channelLength, specParams)
-        processedSignal1 = openUnmix.insertZeros(processedSignal1, processedLength, channelLength, specParams)
-
-        // Generate buffer dic to create waveFile
-        let bufferOutput = {
-            numberOfChannels: 2,
-            sampleRate: 44100,
-            channelData: [processedSignal0, processedSignal1]
-        }
-
-        console.log("Generating wave file")
-        //code.createWave(bufferOutput, 'outPutWaveModel.wav')
+        openUnmix.createWave(buff, "testE2.wav")
 
     });
 

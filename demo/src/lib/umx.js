@@ -1,19 +1,21 @@
 import * as tf from "@tensorflow/tfjs"
+const config = require('../../config/config.json');
 
 tf.ENV.set('WEBGL_CONV_IM2COL', false);
 
 const DEBUG = false
 
-const FRAME_LENGTH = 2048
-const HOP_LENGTH = 1024
-const FFT_SIZE = 2048
+// Fourier Params
+const FRAME_LENGTH = config.fourierParams.frameLength
+const HOP_LENGTH = config.fourierParams.hopLength
+const FFT_SIZE = config.fourierParams.fftSize
 const SAMPLE_RATE = 44100
 
 // MODEL input dimensions
-const N_FREQUENCIES = 1025
-const N_FRAMES = 256
-const N_CHANNELS = 2
-const N_BATCHES = 1
+const N_FREQUENCIES = config.modelInput.N_FREQUENCIES
+const N_FRAMES = config.modelInput.N_FRAMES
+const N_CHANNELS = config.modelInput.N_CHANNELS
+const N_BATCHES = config.modelInput.N_BATCHES
 
 // STFT-ISTFT params:
 // Enables production mode which disables correctness checks in favor of performance.
@@ -25,7 +27,7 @@ const specParams = {
     fftLength: FFT_SIZE
 };
 
-const BASE_URL = "https://storage.googleapis.com/open-unmix-models/open-unmix-js/model.json"
+const BASE_URL = config.model.url
 let model
 /*--------------------- Functions ------------------------------------------------------------------------------------------------------*/
 let aud = {}
@@ -134,13 +136,11 @@ async function modelPredict(resultSTFT, specParams){
     let input = createInput(resultSTFT[0], resultSTFT[1], 0)
 
     // prediction
-    const output = tf.tidy(() => {
-        return model.predict(input["model_input"]);
-    })
+    const output = await model.executeAsync(input["model_input"])
 
     let estimate = tf.tidy(() => {
         return tf.mul(
-            tf.complex(output, tf.zeros([N_FRAMES, N_BATCHES, N_CHANNELS, N_FREQUENCIES])),
+            tf.complex(output, tf.zeros([N_BATCHES, N_CHANNELS, N_FREQUENCIES, N_FRAMES])),
             tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
         )
     })
@@ -149,7 +149,7 @@ async function modelPredict(resultSTFT, specParams){
 
     let estimate_background = tf.tidy(() => {
         return tf.mul(
-            tf.complex((input["model_input"].sub(output)), tf.zeros([N_FRAMES, N_BATCHES, N_CHANNELS, N_FREQUENCIES])),
+            tf.complex((input["model_input"].sub(output)), tf.zeros([N_BATCHES, N_CHANNELS, N_FREQUENCIES, N_FRAMES])),
             tf.complex(tf.cos(input["mix_angle"]),tf.sin(input["mix_angle"]))
         )
     })
@@ -228,8 +228,14 @@ function postProcessing( estimate, specParams, factor){
         let estimateReshapedR = tf.real(estimate)
         let estimateReshapedI = tf.imag(estimate)
 
-        estimateReshapedR = estimateReshapedR.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
-        estimateReshapedI = estimateReshapedI.unstack(2).map(tensor => tensor.squeeze()) // Tensor[]
+        estimateReshapedR = estimateReshapedR.unstack(1).map(tensor => tensor.squeeze()) // Tensor[]
+        estimateReshapedI = estimateReshapedI.unstack(1).map(tensor => tensor.squeeze()) // Tensor[]
+
+        // surmount the problem permuting each dimension // before [ 2049, 198 ] -> after [ 198, 2049 ]
+        estimateReshapedI[0] = tf.transpose(estimateReshapedI[0])
+        estimateReshapedI[1] = tf.transpose(estimateReshapedI[1])
+        estimateReshapedR[0] = tf.transpose(estimateReshapedR[0])
+        estimateReshapedR[1] = tf.transpose(estimateReshapedR[1])
 
         return [tf.complex(estimateReshapedR[0], estimateReshapedI[0]),tf.complex(estimateReshapedR[1], estimateReshapedI[1])]
     })
@@ -256,17 +262,16 @@ function postProcessing( estimate, specParams, factor){
 function createInput(res0, res1, slice_start){
     let absChannel0 = tf.abs(res0).slice([slice_start,0], [N_FRAMES, N_FREQUENCIES])
     let absChannel1 = tf.abs(res1).slice([slice_start,0], [N_FRAMES, N_FREQUENCIES])
-    const model_input = tf.stack([absChannel0, absChannel1]).transpose([1, 0, 2]).expandDims(1)
+    const model_input = tf.stack([absChannel0, absChannel1]).transpose([0, 2, 1]).expandDims(0)
 
-    //
     let chan0R = tf.real(res0).slice([slice_start,0], [N_FRAMES, N_FREQUENCIES])
     let chan0I = tf.imag(res0).slice([slice_start,0], [N_FRAMES, N_FREQUENCIES])
 
     let chan1R = tf.real(res1).slice([slice_start,0], [N_FRAMES, N_FREQUENCIES])
     let chan1I = tf.imag(res1).slice([slice_start,0], [N_FRAMES, N_FREQUENCIES])
 
-    let chanR = tf.stack([chan0R.arraySync(), chan1R.arraySync()]).transpose([1, 0, 2]).expandDims(1)
-    let chanI = tf.stack([chan0I.arraySync(), chan1I.arraySync()]).transpose([1, 0, 2]).expandDims(1)
+    let chanR = tf.stack([chan0R.arraySync(), chan1R.arraySync()]).transpose([0, 2, 1]).expandDims(0)
+    let chanI = tf.stack([chan0I.arraySync(), chan1I.arraySync()]).transpose([0, 2, 1]).expandDims(0)
 
     let mix_stft = tf.complex(chanR, chanI)
 
@@ -324,7 +329,7 @@ function padCenterToLength(data, length) {
 function istft(complex, params, factor) {
     const winFactor = factor || 1.0;
     const nFrames = complex.shape[0];
-    const nFft = params.nFft || enclosingPowerOfTwo(complex.shape[1]);
+    const nFft = params.fftLength || enclosingPowerOfTwo(complex.shape[1]);
     const winLength = params.winLength || nFft;
     const hopLength = params.hopLength || Math.floor(winLength / 2);
 
@@ -369,7 +374,7 @@ function istft(complex, params, factor) {
  * @param forward_window_fn
  * @returns {Tensor}
  */
-function inverse_stft_window_fn(frame_step, frame_length, forward_window_fn = (f) => tf.hannWindow(f)){
+function inverse_stft_window_fn(frame_step, frame_length, forward_window_fn = (f) => tf.signal.hannWindow(f)){
     const forward_window = forward_window_fn(frame_length)
     let denom = tf.square(forward_window)
     const overlaps = Math.ceil(frame_length/frame_step) // -(-frame_length / frame_step) but js
