@@ -1,4 +1,4 @@
-const tf = require('@tensorflow/tfjs-node');
+const tf = require('@tensorflow/tfjs');
 const fs = require('fs');
 const config = require('../config/config.json');
 
@@ -35,8 +35,23 @@ let model
  * @param url
  * @returns {Promise<GraphModel>}
  */
-async function loadModel(url){
-    model = await tf.loadGraphModel(url)
+async function loadModel(url, channel0, channel1){
+    var myHeaders = new Headers();
+    // myHeaders.append('Content-Type', 'application/json');
+    myHeaders.append('Access-Control-Allow-Origin', '*')
+
+    var myInit = { method: 'GET',
+        headers: myHeaders,
+        //mode: 'no-cors'
+    };
+
+    //model = await tf.loadGraphModel(url)
+    let modelTest = await tf.loadGraphModel(url)
+
+    console.log(this.model.modelVersion)
+    //model = await tf.loadGraphModel("file:///Users/delton/pfe/umx.js-pfe/data/model/model.json")
+
+    return modelProcess("", channel0, channel1, modelTest)
 }
 
 /**
@@ -46,9 +61,12 @@ async function loadModel(url){
  * @param channel1
  * @returns {Promise<void>}
  */
-async function modelProcess(url, channel0, channel1){
+async function modelProcess(url, channel0, channel1, model){
+    console.log("Start processing...")
     modelPath_ = url || modelPath_
     const numPatches = Math.floor(Math.floor((channel0.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
+
+    this.model = model
 
     console.log("Num patches " + numPatches)
 
@@ -73,31 +91,40 @@ async function modelProcess(url, channel0, channel1){
         result1.dispose()
     }
 
-    let processedSignal0 = vocal_stem[0].flat()
-    let processedSignal1 = vocal_stem[1].flat()
+    let vocals = createBuffer(vocal_stem, channel0.length, channel1.length)
+    let back = createBuffer(back_stem, channel0.length, channel1.length)
 
-    processedSignal0 = processedSignal0.slice(0, channel0.length)
-    processedSignal1 = processedSignal1.slice(0, channel1.length)
+    let buff_vocals = createWave(vocals, "vocals.wav")
+    let buff_back = createWave(back, "accompaniment.wav")
 
+    //saveFile(buff_back, "Example.wav");
+    return {
+        stems:[
+            {
+                name:"vocals",
+                data:buff_vocals
+            },
+            {
+                name:"accompaniment",
+                data:buff_back
+            }
+        ]
+    }
+}
+
+function createBuffer(channels, originalChannelLength1, originalChannelLength2){
+    let processedSignal0 = channels[0].flat()
+    let processedSignal1 = channels[1].flat()
+
+    processedSignal0 = processedSignal0.slice(0, originalChannelLength1)
+    processedSignal1 = processedSignal1.slice(0, originalChannelLength2)
+
+    // Generate buffer dic to create waveFile
     return {
         numberOfChannels: 2,
         sampleRate: 44100,
         channelData: [processedSignal0, processedSignal1]
     }
-
-    //saveFile(buff_back, "Example.wav");
-    // return {
-    //     stems:[
-    //         {
-    //             name:"vocals",
-    //             data:buff_vocals
-    //         },
-    //         {
-    //             name:"accompaniment",
-    //             data:buff_back
-    //         }
-    //     ]
-    // }
 }
 
 /**
@@ -114,8 +141,10 @@ async function modelPredict(resultSTFT, specParams){
 
     let input = createInput(resultSTFT[0], resultSTFT[1], 0)
 
+    console.log(this.model)
+
     // prediction
-    const output = await model.executeAsync(input["model_input"])
+    const output = await this.model.executeAsync(input["model_input"])
 
     let estimate = tf.tidy(() => {
         return tf.mul(
@@ -434,21 +463,21 @@ function createWave(outputBuffer, path) {
     // create Blob
 
     //used by node
-    let buff = new Buffer.from(buffer)
-    fs.open(path, 'w', function(err, fd) {
-        if (err) {
-            throw 'error opening file: ' + err;
-        }
-        fs.write(fd, buff, 0, buff.length, null, function(err) {
-            if (err) throw 'error writing file: ' + err;
-            fs.close(fd, function() {
-                console.log('file written');
-            })
-        });
-    });
+    // let buff = new Buffer.from(buffer)
+    // fs.open(path, 'w', function(err, fd) {
+    //     if (err) {
+    //         throw 'error opening file: ' + err;
+    //     }
+    //     fs.write(fd, buff, 0, buff.length, null, function(err) {
+    //         if (err) throw 'error writing file: ' + err;
+    //         fs.close(fd, function() {
+    //             console.log('file written');
+    //         })
+    //     });
+    // });
 
     //used by pure js
-    //return new Blob([buffer], {type: "audio/wav"});
+    return new Blob([buffer], {type: "audio/wav"});
 
     function setUint16(data) {
         view.setUint16(pos, data, true);

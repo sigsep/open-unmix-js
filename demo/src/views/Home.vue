@@ -35,13 +35,13 @@
                         </ul>
                       </div>
                       </label>
-                      <input type="file" 
-                              style="visibility:hidden" 
-                              id="clicable_file" 
+                      <input type="file"
+                              style="visibility:hidden"
+                              id="clicable_file"
                               v-if="shouldRenderDropzone"
                               @change="addFilesInputTag"
                       />
-                    
+
                     <div v-if=" shouldRenderSong">
                         <audio ref="ogAudio" controls>
                             <p>Your browser does not have the <code>audio</code> tag</p>
@@ -99,7 +99,8 @@ import vueDropzone from "vue2-dropzone";
 import vueHeadful from "vue-headful";
 import Player from './../components/Player.vue'
 import axios from 'axios'
-import {readFile, modelProcess} from './../lib/umx.js'
+import {readFile} from './../lib/umx.js'
+import {modelProcess, loadModel} from 'open-unmix-js'
 
 
 export default {
@@ -107,6 +108,7 @@ export default {
   components: { Player, vueDropzone, vueHeadful},
   data () {
     return {
+      decodedFiles: [],
       files:[],
       shouldRenderPlayer: false,
       shouldRenderSong: true,
@@ -130,6 +132,7 @@ export default {
       uploadProgress: false,
       progress: false,
       myProgress: 0,
+        model: null,
     }
   },
   mounted: function () {
@@ -140,15 +143,15 @@ export default {
   },
   methods: {
 
-    addFile(files) {
+    async addFile(files) {
       let blob = window.URL || window.webkitURL;
       ([...files]).forEach(file => {
-        this.$refs.ogAudio.src =  blob.createObjectURL(file)
-        this.playerconf.title = file.name;
-        this.files.push(file)
-        readFile(file)
-        this.isDisabled = false
-        this.disableInputTag = true
+            this.$refs.ogAudio.src =  blob.createObjectURL(file)
+            this.playerconf.title = file.name;
+            this.files.push(file)
+            readFile(file, this.decodedFiles)
+            this.isDisabled = false
+            this.disableInputTag = true
       });
     },
 
@@ -171,7 +174,15 @@ export default {
 
     async processSong(){
       this.isLoading = true
-      modelProcess().then((result) =>
+        //this.decodedFiles.src[0] -> channel 0
+        //this.decodedFiles.src[1] -> channel 1
+      // loadModel('http://storage.googleapis.com/open-unmix-models/umxhq-tfjs/model.json').then((response) => {
+      //     console.log(response)
+      // })
+
+
+
+        loadModel("http://storage.googleapis.com/open-unmix-models/umxhq-tfjs/model.json", this.decodedFiles[0], this.decodedFiles[1]).then((result) =>
         {
           this.shouldRenderSong = false
           this.shouldRenderDropzone = false
