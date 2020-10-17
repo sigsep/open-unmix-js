@@ -3,7 +3,6 @@ const SAMPLE_RATE = 44100
 
 
 function readFile(file, setVal){
-    let retV = {}
     const fileReader = new FileReader()
     fileReader.onerror = function(){ console.log("Error when reading the file") }
     fileReader.onload = function(file){

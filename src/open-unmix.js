@@ -35,38 +35,19 @@ let model
  * @param url
  * @returns {Promise<GraphModel>}
  */
-async function loadModel(url, channel0, channel1){
-    var myHeaders = new Headers();
-    // myHeaders.append('Content-Type', 'application/json');
-    myHeaders.append('Access-Control-Allow-Origin', '*')
-
-    var myInit = { method: 'GET',
-        headers: myHeaders,
-        //mode: 'no-cors'
-    };
-
-    //model = await tf.loadGraphModel(url)
-    let modelTest = await tf.loadGraphModel(url)
-
-    console.log(this.model.modelVersion)
-    //model = await tf.loadGraphModel("file:///Users/delton/pfe/umx.js-pfe/data/model/model.json")
-
-    return modelProcess("", channel0, channel1, modelTest)
+async function loadModel(url){
+    this.model = await tf.loadGraphModel(url)
 }
 
 /**
  *
- * @param url
  * @param channel0
  * @param channel1
- * @returns {Promise<void>}
+ * @returns {Promise<void>} with vocals and accompaniment
  */
-async function modelProcess(url, channel0, channel1, model){
+async function modelProcess(channel0, channel1){
     console.log("Start processing...")
-    modelPath_ = url || modelPath_
     const numPatches = Math.floor(Math.floor((channel0.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
-
-    this.model = model
 
     console.log("Num patches " + numPatches)
 
@@ -137,11 +118,8 @@ async function modelPredict(resultSTFT, specParams){
 
     let result_vocals = [[],[]]
     let result_background = [[],[]]
-    let number_of_frames = resultSTFT[0].shape[0]
 
     let input = createInput(resultSTFT[0], resultSTFT[1], 0)
-
-    console.log(this.model)
 
     // prediction
     const output = await this.model.executeAsync(input["model_input"])
@@ -324,7 +302,9 @@ function padCenterToLength(data, length) {
 }
 
 /**
- *
+ * Inverse Short-term fourier transform matching python's
+ * Inspired in
+ * https://github.com/magenta/magenta-js/blob/41e1575fbb2d2ef49077c8630896f562cab818ac/music/src/gansynth/audio_utils.ts
  * @param complex output of STFT
  * @param params Parameters for computing a inverse spectrogram from audio.
  * @param factor adjust normalization factor
@@ -424,7 +404,13 @@ function add(arr0, arr1) {
     return out;
 }
 
-// Convert a audio-buffer segment to a Blob using WAVE representation
+/**
+ * Convert a audio-buffer segment to a Blob using WAVE representation
+ * Thanks https://koekestra.com/spleeter_js/
+ * @param outputBuffer
+ * @param path
+ * @returns {Blob}
+ */
 function createWave(outputBuffer, path) {
     const length = outputBuffer.channelData[0].length * 2 * 2 + 44;
     const buffer = new ArrayBuffer(length);
@@ -439,10 +425,10 @@ function createWave(outputBuffer, path) {
     setUint32(0x20746d66);                         // "fmt " chunk
     setUint32(16);                                 // length = 16
     setUint16(1);                                  // PCM (uncompressed)
-    setUint16(2); // numOfChan);
+    setUint16(2);
     setUint32(outputBuffer.sampleRate);
-    setUint32(outputBuffer.sampleRate * 2 * outputBuffer.numberOfChannels); //abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
-    setUint16(2 * outputBuffer.numberOfChannels); // numOfChan * 2);                      // block-align
+    setUint32(outputBuffer.sampleRate * 2 * outputBuffer.numberOfChannels);
+    setUint16(2 * outputBuffer.numberOfChannels);  // block-align
     setUint16(16);                                 // 16-bit (hardcoded in this demo)
 
     setUint32(0x61746164);                         // "data" - chunk
@@ -460,23 +446,6 @@ function createWave(outputBuffer, path) {
         offset++;                                     // next source sample
     }
 
-    // create Blob
-
-    //used by node
-    // let buff = new Buffer.from(buffer)
-    // fs.open(path, 'w', function(err, fd) {
-    //     if (err) {
-    //         throw 'error opening file: ' + err;
-    //     }
-    //     fs.write(fd, buff, 0, buff.length, null, function(err) {
-    //         if (err) throw 'error writing file: ' + err;
-    //         fs.close(fd, function() {
-    //             console.log('file written');
-    //         })
-    //     });
-    // });
-
-    //used by pure js
     return new Blob([buffer], {type: "audio/wav"});
 
     function setUint16(data) {
@@ -490,11 +459,5 @@ function createWave(outputBuffer, path) {
     }
 }
 
-exports.preProcessing = preProcessing;
-exports.istft = istft;
-exports.postProcessing = postProcessing;
-exports.createWave = createWave
-exports.loadAndPredict = modelPredict
 exports.loadModel = loadModel
-exports.padSignal = padSignal
 exports.modelProcess = modelProcess

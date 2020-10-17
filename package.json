@@ -31,7 +31,7 @@
   "dependencies": {
     "@tensorflow/tfjs": "^2.4.0",
     "@tensorflow/tfjs-node": "^2.4.0",
-    "node-lame": "^1.2.2",
-    "node-fetch": "latest"
+    "node-fetch": "latest",
+    "node-lame": "^1.2.2"
   }
 }
