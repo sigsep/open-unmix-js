@@ -9,7 +9,6 @@
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
-    "aws-sdk": "^2.765.0",
     "axios": "^0.19.2",
     "core-js": "^3.4.4",
     "mousetrap": "^1.6.5",
