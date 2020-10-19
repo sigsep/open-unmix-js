@@ -1,6 +1,6 @@
 {
   "model": {
-    "url1" : "http://localhost:5000/model.json",
+    "url1" : "http://storage.googleapis.com/open-unmix-models/umxhq-tfjs/model.json",
     "url2" : "https://storage.cloud.google.com/open-unmix-models/open-unmix-js/model.json"
   }
 }

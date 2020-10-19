@@ -290,20 +290,21 @@ export default {
     display: block;
     margin-left: auto;
     margin-right: auto;
+    width: 100%;
 }
 
 #outterAudio {
     display: block;
     margin-left: auto;
     margin-right: auto;
-    width: 40%;
+    width: 100%;
 }
 
 #dropDown {
     display: block;
     margin-left: auto;
     margin-right: auto;
-    width: 25%;
+    width: 100%;
 }
 
 

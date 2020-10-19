@@ -9,10 +9,5 @@
     "N_FRAMES": 100,
     "N_CHANNELS" : 2,
     "N_BATCHES" : 1
-  },
-
-  "model": {
-    "url" : "https://storage.googleapis.com/open-unmix-models/umxhq-tfjs/model.json",
-    "url2" : "https://storage.cloud.google.com/open-unmix-models/open-unmix-js/model.json"
   }
 }
