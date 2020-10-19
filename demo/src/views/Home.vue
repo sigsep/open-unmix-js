@@ -146,12 +146,12 @@ export default {
             {
                 value: "Model I",
                 url: config.model.url1
-            },
-            {
-                value: "Model II",
-                url: config.model.url2
-
             }
+            // {
+            //     value: "Model II",
+            //     url: config.model.url2
+            //
+            // }
         ],
         placeholder: "Select model",
         width: "100%"
