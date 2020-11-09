@@ -2,7 +2,7 @@
   "name": "open-unmix-js",
   "version": "1.0.0",
   "description": "A package that contains an STFT and ISTFT implementation, and a tfjs model loader",
-  "main": "index.js",
+  "main": "src/open-unmix.js",
   "directories": {
     "test": "test"
   },
@@ -31,6 +31,7 @@
   "dependencies": {
     "@tensorflow/tfjs": "^2.4.0",
     "@tensorflow/tfjs-node": "^2.4.0",
+    "node-fetch": "latest",
     "node-lame": "^1.2.2"
   }
 }

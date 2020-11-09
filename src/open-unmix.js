@@ -1,4 +1,4 @@
-const tf = require('@tensorflow/tfjs-node');
+const tf = require('@tensorflow/tfjs');
 const fs = require('fs');
 const config = require('../config/config.json');
 
@@ -36,18 +36,17 @@ let model
  * @returns {Promise<GraphModel>}
  */
 async function loadModel(url){
-    model = await tf.loadGraphModel(url)
+    this.model = await tf.loadGraphModel(url)
 }
 
 /**
  *
- * @param url
  * @param channel0
  * @param channel1
- * @returns {Promise<void>}
+ * @returns {Promise<void>} with vocals and accompaniment
  */
-async function modelProcess(url, channel0, channel1){
-    modelPath_ = url || modelPath_
+async function modelProcess(channel0, channel1){
+    console.log("Start processing...")
     const numPatches = Math.floor(Math.floor((channel0.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
 
     console.log("Num patches " + numPatches)
@@ -73,31 +72,40 @@ async function modelProcess(url, channel0, channel1){
         result1.dispose()
     }
 
-    let processedSignal0 = vocal_stem[0].flat()
-    let processedSignal1 = vocal_stem[1].flat()
+    let vocals = createBuffer(vocal_stem, channel0.length, channel1.length)
+    let back = createBuffer(back_stem, channel0.length, channel1.length)
 
-    processedSignal0 = processedSignal0.slice(0, channel0.length)
-    processedSignal1 = processedSignal1.slice(0, channel1.length)
+    let buff_vocals = createWave(vocals, "vocals.wav")
+    let buff_back = createWave(back, "accompaniment.wav")
 
+    //saveFile(buff_back, "Example.wav");
+    return {
+        stems:[
+            {
+                name:"vocals",
+                data:buff_vocals
+            },
+            {
+                name:"accompaniment",
+                data:buff_back
+            }
+        ]
+    }
+}
+
+function createBuffer(channels, originalChannelLength1, originalChannelLength2){
+    let processedSignal0 = channels[0].flat()
+    let processedSignal1 = channels[1].flat()
+
+    processedSignal0 = processedSignal0.slice(0, originalChannelLength1)
+    processedSignal1 = processedSignal1.slice(0, originalChannelLength2)
+
+    // Generate buffer dic to create waveFile
     return {
         numberOfChannels: 2,
         sampleRate: 44100,
         channelData: [processedSignal0, processedSignal1]
     }
-
-    //saveFile(buff_back, "Example.wav");
-    // return {
-    //     stems:[
-    //         {
-    //             name:"vocals",
-    //             data:buff_vocals
-    //         },
-    //         {
-    //             name:"accompaniment",
-    //             data:buff_back
-    //         }
-    //     ]
-    // }
 }
 
 /**
@@ -110,12 +118,11 @@ async function modelPredict(resultSTFT, specParams){
 
     let result_vocals = [[],[]]
     let result_background = [[],[]]
-    let number_of_frames = resultSTFT[0].shape[0]
 
     let input = createInput(resultSTFT[0], resultSTFT[1], 0)
 
     // prediction
-    const output = await model.executeAsync(input["model_input"])
+    const output = await this.model.executeAsync(input["model_input"])
 
     let estimate = tf.tidy(() => {
         return tf.mul(
@@ -295,7 +302,9 @@ function padCenterToLength(data, length) {
 }
 
 /**
- *
+ * Inverse Short-term fourier transform matching python's
+ * Inspired in
+ * https://github.com/magenta/magenta-js/blob/41e1575fbb2d2ef49077c8630896f562cab818ac/music/src/gansynth/audio_utils.ts
  * @param complex output of STFT
  * @param params Parameters for computing a inverse spectrogram from audio.
  * @param factor adjust normalization factor
@@ -395,7 +404,13 @@ function add(arr0, arr1) {
     return out;
 }
 
-// Convert a audio-buffer segment to a Blob using WAVE representation
+/**
+ * Convert a audio-buffer segment to a Blob using WAVE representation
+ * Thanks https://koekestra.com/spleeter_js/
+ * @param outputBuffer
+ * @param path
+ * @returns {Blob}
+ */
 function createWave(outputBuffer, path) {
     const length = outputBuffer.channelData[0].length * 2 * 2 + 44;
     const buffer = new ArrayBuffer(length);
@@ -410,10 +425,10 @@ function createWave(outputBuffer, path) {
     setUint32(0x20746d66);                         // "fmt " chunk
     setUint32(16);                                 // length = 16
     setUint16(1);                                  // PCM (uncompressed)
-    setUint16(2); // numOfChan);
+    setUint16(2);
     setUint32(outputBuffer.sampleRate);
-    setUint32(outputBuffer.sampleRate * 2 * outputBuffer.numberOfChannels); //abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
-    setUint16(2 * outputBuffer.numberOfChannels); // numOfChan * 2);                      // block-align
+    setUint32(outputBuffer.sampleRate * 2 * outputBuffer.numberOfChannels);
+    setUint16(2 * outputBuffer.numberOfChannels);  // block-align
     setUint16(16);                                 // 16-bit (hardcoded in this demo)
 
     setUint32(0x61746164);                         // "data" - chunk
@@ -431,24 +446,7 @@ function createWave(outputBuffer, path) {
         offset++;                                     // next source sample
     }
 
-    // create Blob
-
-    //used by node
-    let buff = new Buffer.from(buffer)
-    fs.open(path, 'w', function(err, fd) {
-        if (err) {
-            throw 'error opening file: ' + err;
-        }
-        fs.write(fd, buff, 0, buff.length, null, function(err) {
-            if (err) throw 'error writing file: ' + err;
-            fs.close(fd, function() {
-                console.log('file written');
-            })
-        });
-    });
-
-    //used by pure js
-    //return new Blob([buffer], {type: "audio/wav"});
+    return new Blob([buffer], {type: "audio/wav"});
 
     function setUint16(data) {
         view.setUint16(pos, data, true);
@@ -461,11 +459,5 @@ function createWave(outputBuffer, path) {
     }
 }
 
-exports.preProcessing = preProcessing;
-exports.istft = istft;
-exports.postProcessing = postProcessing;
-exports.createWave = createWave
-exports.loadAndPredict = modelPredict
 exports.loadModel = loadModel
-exports.padSignal = padSignal
 exports.modelProcess = modelProcess

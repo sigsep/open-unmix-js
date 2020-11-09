@@ -1,0 +1,7 @@
+.idea/
+demo
+data
+node_modules
+.gitignore
+*.wav
+.DS_Store

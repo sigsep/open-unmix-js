@@ -19,7 +19,6 @@
             </p>
         </header>
         <div >
-
         </div>
         <v-container bg grid-list-md text-xs-center>
             <v-layout row wrap align-center>
@@ -35,19 +34,25 @@
                         </ul>
                       </div>
                       </label>
-                      <input type="file" 
-                              style="visibility:hidden" 
-                              id="clicable_file" 
+                      <input type="file"
+                              style="visibility:hidden"
+                              id="clicable_file"
                               v-if="shouldRenderDropzone"
                               @change="addFilesInputTag"
                       />
-                    
-                    <div v-if=" shouldRenderSong">
-                        <audio ref="ogAudio" controls>
+                    <div v-if=" shouldRenderSong" id="dropDown">
+                        <vue-dropdown
+                                :config="config"
+                                @setSelectedOption="modelSelector($event)"
+                        ></vue-dropdown>
+                    </div>
+                    <br/>
+                    <div v-if=" shouldRenderSong" id="outterAudio">
+                        <audio ref="ogAudio" controls id="audio">
                             <p>Your browser does not have the <code>audio</code> tag</p>
                         </audio>
 
-
+                        <br/>
                         <v-btn
                                 color="secondary"
                                 v-on:click="processSong"
@@ -98,21 +103,24 @@
 import vueDropzone from "vue2-dropzone";
 import vueHeadful from "vue-headful";
 import Player from './../components/Player.vue'
-import axios from 'axios'
-import {readFile, modelProcess} from './../lib/umx.js'
+import VueDropdown from 'vue-dynamic-dropdown'
+import {readFile} from './../lib/umx.js'
+import {modelProcess, loadModel} from 'open-unmix-js'
+const config = require('../../config/config');
 
 
 export default {
   name: 'Home',
-  components: { Player, vueDropzone, vueHeadful},
+  components: { Player, vueDropzone, vueHeadful, VueDropdown},
   data () {
     return {
+      decodedFiles: [],
       files:[],
       shouldRenderPlayer: false,
       shouldRenderSong: true,
       shouldRenderDropzone:true,
       disableInputTag: false,
-      dark: true,
+      dark: false,
       player: null,
       combKey: 42,
       showPlayer: false,
@@ -130,6 +138,24 @@ export default {
       uploadProgress: false,
       progress: false,
       myProgress: 0,
+      model: null,
+      openUnmix: null,
+      modelUrl: "",
+      config: {
+        options: [
+            {
+                value: "Open-Unmix [Vocals]",
+                url: config.model.url1
+            },
+            {
+                value: "Spleeter [Vocals] (T.B.A.)",
+                url: config.model.url2
+            
+            }
+        ],
+        placeholder: "Select model",
+        width: "100%"
+    }
     }
   },
   mounted: function () {
@@ -140,15 +166,15 @@ export default {
   },
   methods: {
 
-    addFile(files) {
+    async addFile(files) {
       let blob = window.URL || window.webkitURL;
       ([...files]).forEach(file => {
-        this.$refs.ogAudio.src =  blob.createObjectURL(file)
-        this.playerconf.title = file.name;
-        this.files.push(file)
-        readFile(file)
-        this.isDisabled = false
-        this.disableInputTag = true
+            this.$refs.ogAudio.src =  blob.createObjectURL(file)
+            this.playerconf.title = file.name;
+            this.files.push(file)
+            readFile(file, this.decodedFiles) // Put decoded files into this.decodedFiles
+            this.isDisabled = false
+            this.disableInputTag = true
       });
     },
 
@@ -169,9 +195,22 @@ export default {
       this.files = []
     },
 
+    modelSelector(selectedOption){
+          this.config.placeholder = selectedOption.value;
+          this.modelUrl = selectedOption.url;
+      },
+
     async processSong(){
       this.isLoading = true
-      modelProcess().then((result) =>
+        if(this.modelUrl === ""){
+            alert("Please select a model")
+            this.isLoading = false
+            return 1
+        }
+        console.log(this.modelUrl)
+
+        await loadModel(this.modelUrl);
+        modelProcess(this.decodedFiles[0], this.decodedFiles[1]).then((result) =>
         {
           this.shouldRenderSong = false
           this.shouldRenderDropzone = false
@@ -189,9 +228,7 @@ export default {
           }
           this.tracklist = trackstoload
           }
-
       )
-
     },
 
     download(track){
@@ -248,4 +285,27 @@ export default {
 #right {
     margin-right: 10%;
 }
+
+#audio {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+}
+
+#outterAudio {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+}
+
+#dropDown {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+}
+
+
 </style>
