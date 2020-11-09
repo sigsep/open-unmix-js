@@ -120,7 +120,7 @@ export default {
       shouldRenderSong: true,
       shouldRenderDropzone:true,
       disableInputTag: false,
-      dark: true,
+      dark: false,
       player: null,
       combKey: 42,
       showPlayer: false,
@@ -144,14 +144,14 @@ export default {
       config: {
         options: [
             {
-                value: "Model I",
+                value: "Open-Unmix [Vocals]",
                 url: config.model.url1
+            },
+            {
+                value: "Spleeter [Vocals] (T.B.A.)",
+                url: config.model.url2
+            
             }
-            // {
-            //     value: "Model II",
-            //     url: config.model.url2
-            //
-            // }
         ],
         placeholder: "Select model",
         width: "100%"
