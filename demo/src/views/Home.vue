@@ -144,11 +144,11 @@ export default {
       config: {
         options: [
             {
-                value: "Open-Unmix [Vocals]",
+                value: "Open-Unmix Vocals",
                 url: config.model.url1
             },
             {
-                value: "Spleeter [Vocals] (T.B.A.)",
+                value: "Open-Unmix Vocals 8bit",
                 url: config.model.url2
             
             }
