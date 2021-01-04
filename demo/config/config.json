@@ -1,0 +1,6 @@
+{
+  "model": {
+    "url1" : "https://storage.googleapis.com/open-unmix-models/umxhq-tfjs/model.json",
+    "url2" : "https://storage.googleapis.com/open-unmix-models/umxhquint8-tfjs/model.json"
+  }
+}

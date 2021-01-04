@@ -1,18 +1,13 @@
 {
   "fourierParams": {
-    "frameLength" : 2048,
-    "hopLength" : 1024,
-    "fftSize" : 2048
+    "frameLength" : 4096,
+    "hopLength" : 2048,
+    "fftSize" : 4096
   },
   "modelInput": {
-    "N_FREQUENCIES" : 1025,
-    "N_FRAMES": 256,
+    "N_FREQUENCIES" : 2049,
+    "N_FRAMES": 100,
     "N_CHANNELS" : 2,
     "N_BATCHES" : 1
-  },
-
-  "model": {
-    "url" : "http://localhost:5000/data/model/model.json",
-    "url2" : "https://storage.cloud.google.com/open-unmix-models/open-unmix-js/model.json"
   }
 }
