@@ -1,6 +1,6 @@
 const SAMPLE_RATE = 44100
 const WARNING_DURATION = 30
-const WARNING_MESSAGE = "WARNING: audios longer than 30 seconds may take a considerable time to process"
+const WARNING_MESSAGE = "Currently the model prediction is very slow, please consider to process only signals of less than 30 seconds"
 
 function readFile(file, setVal){
     const fileReader = new FileReader()

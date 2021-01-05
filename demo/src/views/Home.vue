@@ -1,11 +1,10 @@
 <template>
-
     <v-app id='app' :dark="dark">
         <vue-headful
                 title="SigSep"
                 description="Open Resources for Music Source Separation"
         />
-        <head><title>My Vue.js app</title></head>
+        <head><title>SigSep</title></head>
         <header bg fill-height grid-list-md text-xs-center>
             <v-img
                     src="../assets/hero.png"
