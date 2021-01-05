@@ -1,12 +1,17 @@
 const SAMPLE_RATE = 44100
-
-
+const WARNING_DURATION = 30
+const WARNING_MESSAGE = "WARNING: audios longer than 30 seconds may take a considerable time to process"
 
 function readFile(file, setVal){
     const fileReader = new FileReader()
     fileReader.onerror = function(){ console.log("Error when reading the file") }
     fileReader.onload = function(file){
         decodeFile(file.name, fileReader.result).then(a => {
+            if(a.duration > WARNING_DURATION){
+                if(!confirm(WARNING_MESSAGE)){
+                    location.reload();
+                }
+            }
             setVal.push(a.getChannelData(0), a.getChannelData(1))
         })
     }
@@ -20,7 +25,7 @@ function decodeFile(fileName, arrBuffer){
             const source = audioContext.createBufferSource()
             source.buffer = data
             if (source.buffer.sampleRate !== SAMPLE_RATE || source.buffer.numberOfChannels !== 2) {
-                console.log(source.buffer.sampleRate, source.buffer.numberOfChannelst)
+                console.log(source.buffer.sampleRate, source.buffer.numberOfChannels)
                 alert("Sorry, we can oly process songs with a 44100 sample rate and 2 channels")
                 throw new Error('Cannot process song')
             }

@@ -150,7 +150,7 @@ export default {
             {
                 value: "Open-Unmix Vocals 8bit",
                 url: config.model.url2
-            
+
             }
         ],
         placeholder: "Select model",
@@ -207,7 +207,6 @@ export default {
             this.isLoading = false
             return 1
         }
-        console.log(this.modelUrl)
 
         await loadModel(this.modelUrl);
         modelProcess(this.decodedFiles[0], this.decodedFiles[1]).then((result) =>
