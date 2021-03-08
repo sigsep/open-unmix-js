@@ -99,18 +99,16 @@
     </v-app>
 </template>
 <script>
-import vueDropzone from "vue2-dropzone";
 import vueHeadful from "vue-headful";
 import Player from './../components/Player.vue'
 import VueDropdown from 'vue-dynamic-dropdown'
 import {readFile} from './../lib/umx.js'
-import {modelProcess, loadModel} from 'open-unmix-js'
+import { computeStems } from '../worker/util.worker'
 const config = require('../../config/config');
-
 
 export default {
   name: 'Home',
-  components: { Player, vueDropzone, vueHeadful, VueDropdown},
+  components: { Player, vueHeadful, VueDropdown},
   data () {
     return {
       decodedFiles: [],
@@ -158,8 +156,9 @@ export default {
     }
   },
   mounted: function () {
-
+  
   },
+
   created: function () {
 
   },
@@ -201,32 +200,23 @@ export default {
 
     async processSong(){
       this.isLoading = true
-        if(this.modelUrl === ""){
-            alert("Please select a model")
-            this.isLoading = false
-            return 1
-        }
+      if(this.modelUrl === ""){
+        alert("Please select a model")
+        this.isLoading = false
+        return 1
+      }
 
-        await loadModel(this.modelUrl);
-        modelProcess(this.decodedFiles[0], this.decodedFiles[1]).then((result) =>
-        {
-          this.shouldRenderSong = false
-          this.shouldRenderDropzone = false
-          this.shouldRenderPlayer = true
-          this.combKey = Math.ceil(Math.random() * 10000)
-          let trackstoload = []
-          for (let stem of result.stems) {
-            trackstoload.push(
-                { 'name': stem.name,
-                  'customClass': stem.name,
-                  'solo': false,
-                  'mute': false,
-                  'src': stem.data
-              })
-          }
-          this.tracklist = trackstoload
-          }
-      )
+      let workerInput = {
+        'decodedFiles': this.decodedFiles,
+        'modelUrl': this.modelUrl
+      }
+
+      let result = await computeStems(workerInput)
+      this.tracklist = result;
+      this.shouldRenderSong = false
+      this.shouldRenderDropzone = false
+      this.shouldRenderPlayer = true
+      this.combKey = Math.ceil(Math.random() * 10000)
     },
 
     download(track){
