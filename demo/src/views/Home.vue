@@ -1,11 +1,10 @@
 <template>
-
     <v-app id='app' :dark="dark">
         <vue-headful
                 title="SigSep"
                 description="Open Resources for Music Source Separation"
         />
-        <head><title>My Vue.js app</title></head>
+        <head><title>SigSep</title></head>
         <header bg fill-height grid-list-md text-xs-center>
             <v-img
                     src="../assets/hero.png"
@@ -150,7 +149,7 @@ export default {
             {
                 value: "Open-Unmix Vocals 8bit",
                 url: config.model.url2
-            
+
             }
         ],
         placeholder: "Select model",
@@ -207,7 +206,6 @@ export default {
             this.isLoading = false
             return 1
         }
-        console.log(this.modelUrl)
 
         await loadModel(this.modelUrl);
         modelProcess(this.decodedFiles[0], this.decodedFiles[1]).then((result) =>
