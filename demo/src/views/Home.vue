@@ -144,12 +144,19 @@ export default {
         options: [
             {
                 value: "Open-Unmix Vocals",
-                url: config.model.url1
+                url: config.model.vocals
             },
             {
-                value: "Open-Unmix Vocals 8bit",
-                url: config.model.url2
-
+                value: "Open-Unmix Drums",
+                url: config.model.drums
+            },
+            {
+                value: "Open-Unmix Bass",
+                url: config.model.bass
+            },
+            {
+                value: "Open-Unmix Other/Instrumentals",
+                url: config.model.vocals
             }
         ],
         placeholder: "Select model",

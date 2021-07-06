@@ -1,6 +1,9 @@
 {
   "model": {
-    "url1" : "https://storage.googleapis.com/open-unmix-models/umxhq-tfjs/model.json",
-    "url2" : "https://storage.googleapis.com/open-unmix-models/umxhquint8-tfjs/model.json"
+    "vocals" : "https://storage.googleapis.com/open-unmix-models/umxhq-vocals-tfjs/model.json",
+    "drums" : "https://storage.googleapis.com/open-unmix-models/umxhq-drums-tfjs/model.json",
+    "bass" : "https://storage.googleapis.com/open-unmix-models/umxhq-bass-tfjs/model.json",
+    "other" : "https://storage.googleapis.com/open-unmix-models/umxhq-other-tfjs/model.json",
+    "speech" : "https://storage.googleapis.com/open-unmix-models/umxse-speech-tfjs/model.json"
   }
 }
