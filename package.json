@@ -29,8 +29,7 @@
     "nyc": "^15.0.0"
   },
   "dependencies": {
-    "@tensorflow/tfjs": "^2.8.2",
-    "@tensorflow/tfjs-node": "^2.8.2",
+    "@tensorflow/tfjs": "^3.7.0",
     "node-fetch": "latest",
     "node-lame": "^1.2.2"
   }
