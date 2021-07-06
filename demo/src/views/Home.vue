@@ -1,123 +1,102 @@
 <template>
-    <v-app id='app' :dark="dark">
-        <vue-headful
-                title="SigSep"
-                description="Open Resources for Music Source Separation"
-        />
-        <head><title>SigSep</title></head>
-        <header bg fill-height grid-list-md text-xs-center>
-            <v-img
-                    src="../assets/hero.png"
-                    height="200"
-                    contain
+  <v-app id="app" :dark="dark">
+    <vue-headful
+      title="SigSep"
+      description="Open Resources for Music Source Separation"
+    />
+    <v-container bg grid-list-md text-xs-center>
+      <v-layout row wrap align-center>
+        <v-flex>
+          <label for="clickable_file">
+            <div
+              @drop.prevent="addFilesDrop"
+              @dragover.prevent
+              v-if="shouldRenderDropzone"
+              id="dropzone"
             >
-            </v-img>
-            <h1 class="text-center">SigSep</h1>
-            <p class="text-center">
-                Open Resources for Music Source Separation
-            </p>
-        </header>
-        <div >
-        </div>
-        <v-container bg grid-list-md text-xs-center>
-            <v-layout row wrap align-center>
-                <v-flex >
-                      <v-btn color="secondary" v-on:click="reset" v-if="!isDisabled&&shouldRenderDropzone">Reset</v-btn>
-                      <label for="clicable_file">
-                      <div @drop.prevent="addFilesDrop" @dragover.prevent v-if="shouldRenderDropzone" id="dropzone">
-                      <h2>Drag files or click in this area to upload</h2>
-                        <ul>
-                          <li v-for="file in files"  v-bind:key="file.name">
-                            {{ file.name }} ({{ file.size / 1024}} kb)
-                          </li>
-                        </ul>
-                      </div>
-                      </label>
-                      <input type="file"
-                              style="visibility:hidden"
-                              id="clicable_file"
-                              v-if="shouldRenderDropzone"
-                              @change="addFilesInputTag"
-                      />
-                    <div v-if=" shouldRenderSong" id="dropDown">
-                        <vue-dropdown
-                                :config="config"
-                                @setSelectedOption="modelSelector($event)"
-                        ></vue-dropdown>
-                    </div>
-                    <br/>
-                    <div v-if=" shouldRenderSong" id="outterAudio">
-                        <audio ref="ogAudio" controls id="audio">
-                            <p>Your browser does not have the <code>audio</code> tag</p>
-                        </audio>
-
-                        <br/>
-                        <v-btn
-                                color="secondary"
-                                v-on:click="processSong"
-                                :disabled="isDisabled"
-                                :loading="isLoading"
-                                block
-                        >
-                            Process Song
-                        </v-btn>
-
-                    </div>
-
-                    <div v-if="shouldRenderPlayer">
-                        <v-card
-                                max-width="900"
-                                class="mx-auto"
-                                color="dark-grey"
-                                dark
-                        >
-                            <Player :key="combKey" ref="player" :urls="tracklist" :conf="playerconf"></Player>
-                        </v-card>
-                        <div id="center">
-                            <div id="left">
-                                <v-btn
-                                        color="primary"
-                                        v-on:click="download('vocals')"
-                                >
-                                    Download vocals
-                                </v-btn>
-
-                            </div>
-                            <div id="right">
-                                <v-btn
-                                        color="primary"
-                                        v-on:click="download('back')"
-                                >
-                                    Download Background track
-                                </v-btn>
-                            </div>
-                        </div>
-                    </div>
-                </v-flex>
-            </v-layout>
-        </v-container>
-    </v-app>
+              <h2>Drag an audio file or click in this area</h2>
+              <ul>
+                <li v-for="file in files" v-bind:key="file.name">
+                  {{ file.name }} ({{ file.size / 1024 }} kb)
+                </li>
+              </ul>
+            </div>
+          </label>
+          <input
+            type="file"
+            style="visibility:hidden"
+            id="clickable_file"
+            v-if="shouldRenderDropzone"
+            @change="addFilesInputTag"
+          />
+          <vue-dropdown
+            :config="config"
+            @setSelectedOption="modelSelector($event)"
+          ></vue-dropdown>
+          <br />
+          <div v-if="shouldRenderSong" id="outterAudio">
+            <vuetify-audio flat :file="ogAudio" color="success"></vuetify-audio>
+          </div>
+          <div class="text-center">
+            <v-btn
+              color="secondary"
+              class="ma-2"
+              v-on:click="processSong"
+              :disabled="isDisabled"
+              :loading="isLoading"
+            >
+              Process Track
+            </v-btn>
+            <v-btn color="info" :disabled="isDisabled" v-on:click="reset"
+              >Reset Track</v-btn
+            >
+          </div>
+          <div v-if="shouldRenderPlayer">
+            <v-card max-width="900" class="mx-auto" color="dark-grey" dark>
+              <Player
+                :key="combKey"
+                ref="player"
+                :urls="tracklist"
+                :conf="playerconf"
+              ></Player>
+            </v-card>
+            <div id="center">
+              <div id="left">
+                <v-btn color="primary" v-on:click="download(target)">
+                  Download {{ target }}
+                </v-btn>
+              </div>
+              <div id="right">
+                <v-btn color="primary" v-on:click="download('back')">
+                  Download background
+                </v-btn>
+              </div>
+            </div>
+          </div>
+        </v-flex>
+      </v-layout>
+    </v-container>
+  </v-app>
 </template>
 <script>
-import vueDropzone from "vue2-dropzone";
 import vueHeadful from "vue-headful";
-import Player from './../components/Player.vue'
-import VueDropdown from 'vue-dynamic-dropdown'
-import {readFile} from './../lib/umx.js'
-import {modelProcess, loadModel} from 'open-unmix-js'
-const config = require('../../config/config');
-
+import Player from "./../components/Player.vue";
+import VueDropdown from "vue-dynamic-dropdown";
+import VuetifyAudio from "vuetify-audio";
+import { readFile } from "./../lib/umx.js";
+import { modelProcess, loadModel } from "open-unmix-js";
+const config = require("../../config/config");
 
 export default {
-  name: 'Home',
-  components: { Player, vueDropzone, vueHeadful, VueDropdown},
-  data () {
+  name: "Home",
+  components: { Player, vueHeadful, VueDropdown, VuetifyAudio },
+  data() {
     return {
       decodedFiles: [],
-      files:[],
+      files: [],
       shouldRenderPlayer: false,
-      shouldRenderSong: true,
-      shouldRenderDropzone:true,
+      shouldRenderSong: false,
+      shouldRenderDropzone: true,
       disableInputTag: false,
       dark: false,
       player: null,
@@ -125,13 +104,13 @@ export default {
       showPlayer: false,
       playerconf: {
         title: "",
-        zoom: 1024,
+        zoom: 368,
         dark: true,
-        streams: []
+        streams: [],
       },
       trackstoload: [],
       tracklist: [],
-      fileName:"",
+      fileName: "",
       isLoading: false,
       isDisabled: true,
       uploadProgress: false,
@@ -139,120 +118,131 @@ export default {
       myProgress: 0,
       model: null,
       openUnmix: null,
+      ogAudio: "",
       modelUrl: "",
+      target: "",
       config: {
         options: [
-            {
-                value: "Open-Unmix Vocals",
-                url: config.model.vocals
-            },
-            {
-                value: "Open-Unmix Drums",
-                url: config.model.drums
-            },
-            {
-                value: "Open-Unmix Bass",
-                url: config.model.bass
-            },
-            {
-                value: "Open-Unmix Other/Instrumentals",
-                url: config.model.vocals
-            }
+          {
+            value: "Open-Unmix Vocals",
+            target: "vocals",
+            url: config.model.vocals,
+          },
+          {
+            value: "Open-Unmix Drums",
+            target: "drums",
+            url: config.model.drums,
+          },
+          {
+            value: "Open-Unmix Bass",
+            target: "bass",
+            url: config.model.bass,
+          },
+          {
+            value: "Open-Unmix Other/Instrumentals",
+            target: "other",
+            url: config.model.other,
+          },
         ],
         placeholder: "Select model",
-        width: "100%"
-    }
-    }
+        width: "100%",
+      },
+    };
   },
-  mounted: function () {
-
-  },
-  created: function () {
-
-  },
+  mounted: function() {},
+  created: function() {},
   methods: {
-
     async addFile(files) {
+      console.log("booooooooom");
       let blob = window.URL || window.webkitURL;
-      ([...files]).forEach(file => {
-            this.$refs.ogAudio.src =  blob.createObjectURL(file)
-            this.playerconf.title = file.name;
-            this.files.push(file)
-            readFile(file, this.decodedFiles) // Put decoded files into this.decodedFiles
-            this.isDisabled = false
-            this.disableInputTag = true
+      [...files].forEach((file) => {
+        console.log(file);
+        this.ogAudio = blob.createObjectURL(file);
+        this.playerconf.title = file.name;
+        this.files.push(file);
+        readFile(file, this.decodedFiles); // Put decoded files into this.decodedFiles
+        this.isDisabled = false;
+        this.shouldRenderSong = true;
+        this.shouldRenderDropzone = false;
+      });
+    },
+    addFilesDrop(e) {
+      let droppedFiles = e.dataTransfer.files;
+      if (!droppedFiles) return;
+      this.addFile(droppedFiles);
+    },
+
+    addFilesInputTag(e) {
+      let chosenFiles = e.target.files;
+      if (!chosenFiles) return;
+      this.addFile(chosenFiles);
+    },
+
+    reset(file) {
+      this.isDisabled = true;
+      this.disableInputTag = false;
+      this.shouldRenderDropzone = true;
+      this.shouldRenderSong = false;
+      this.shouldRenderPlayer = false;
+      this.files = [];
+    },
+
+    modelSelector(selectedOption) {
+      this.config.placeholder = selectedOption.value;
+      this.modelUrl = selectedOption.url;
+      this.target = selectedOption.target;
+    },
+
+    async processSong() {
+      this.isLoading = true;
+      if (this.modelUrl === "") {
+        alert("Please select a model");
+        this.isLoading = false;
+        return 1;
+      }
+
+      await loadModel(this.modelUrl);
+      modelProcess(
+        this.decodedFiles[0],
+        this.decodedFiles[1],
+        this.target
+      ).then((result) => {
+        this.shouldRenderSong = false;
+        this.shouldRenderPlayer = true;
+        this.isLoading = false;
+        this.combKey = Math.ceil(Math.random() * 10000);
+        let trackstoload = [];
+        for (let stem of result.stems) {
+          trackstoload.push({
+            name: stem.name,
+            customClass: stem.name,
+            solo: false,
+            mute: false,
+            src: stem.data,
+          });
+        }
+        this.tracklist = trackstoload;
       });
     },
 
-    addFilesDrop(e) {
-      let droppedFiles = e.dataTransfer.files;
-      if(!droppedFiles) return;
-      this.addFile(droppedFiles)
-    },
-
-    addFilesInputTag(e){
-      let chosenFiles = e.target.files;
-      if(!chosenFiles) return;
-      this.addFile(chosenFiles)
-    },
-
-    reset(file){
-      this.isDisabled = true
-      this.files = []
-    },
-
-    modelSelector(selectedOption){
-          this.config.placeholder = selectedOption.value;
-          this.modelUrl = selectedOption.url;
-      },
-
-    async processSong(){
-      this.isLoading = true
-        if(this.modelUrl === ""){
-            alert("Please select a model")
-            this.isLoading = false
-            return 1
-        }
-
-        await loadModel(this.modelUrl);
-        modelProcess(this.decodedFiles[0], this.decodedFiles[1]).then((result) =>
-        {
-          this.shouldRenderSong = false
-          this.shouldRenderDropzone = false
-          this.shouldRenderPlayer = true
-          this.combKey = Math.ceil(Math.random() * 10000)
-          let trackstoload = []
-          for (let stem of result.stems) {
-            trackstoload.push(
-                { 'name': stem.name,
-                  'customClass': stem.name,
-                  'solo': false,
-                  'mute': false,
-                  'src': stem.data
-              })
-          }
-          this.tracklist = trackstoload
-          }
-      )
-    },
-
-    download(track){
-      let t = 0
-      if(track == 'back') t = 1
-      console.log(this.tracklist[0].src)
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(this.tracklist[t].src)
-      link.download = this.fileName+"_"+track+".wav"
-      link.click()
-      URL.revokeObjectURL( link.href);
+    download(track) {
+      let t = 0;
+      if (track == "back") t = 1;
+      console.log(this.tracklist[0].src);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(this.tracklist[t].src);
+      let basename = this.playerconf.title
+        .split(".")
+        .slice(0, -1)
+        .join(".");
+      link.download = basename + "_" + track + ".wav";
+      link.click();
+      URL.revokeObjectURL(link.href);
       link.remove();
     },
   },
-  computed: {
-
-  }
-
-}
+  computed: {},
+};
 </script>
 
 <style lang="stylus">
@@ -304,13 +294,4 @@ export default {
     margin-right: auto;
     width: 100%;
 }
-
-#dropDown {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-    width: 100%;
-}
-
-
 </style>

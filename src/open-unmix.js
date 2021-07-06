@@ -46,14 +46,14 @@ async function loadModel(url){
  * @param channel1
  * @returns {Promise<void>} with vocals and accompaniment
  */
-async function modelProcess(channel0, channel1){
+async function modelProcess(channel0, channel1, target_name){
     console.log("Start processing...")
     const numPatches = Math.floor(Math.floor((channel0.length - 1) / HOP_LENGTH) / N_FRAMES) + 1;
 
     console.log("Num patches " + numPatches)
 
     let start = 0
-    let vocal_stem = [[],[]];
+    let target_stem = [[],[]];
     let back_stem = [[],[]];
     let chunk = HOP_LENGTH * (N_FRAMES - 1)
     let end = chunk
@@ -62,8 +62,8 @@ async function modelProcess(channel0, channel1){
         const result0 = preProcessing(channel0.slice(start, end), specParams);
         const result1 = preProcessing(channel1.slice(start, end), specParams);
         let predict = await modelPredict([result0, result1], specParams)
-        vocal_stem[0][i] = predict[0][0]
-        vocal_stem[1][i] = predict[0][1]
+        target_stem[0][i] = predict[0][0]
+        target_stem[1][i] = predict[0][1]
         back_stem[0][i] = predict[1][0]
         back_stem[1][i] = predict[1][1]
         console.log("End processing chunk: "+i+ "/" +numPatches)
@@ -73,18 +73,18 @@ async function modelProcess(channel0, channel1){
         result1.dispose()
     }
 
-    let vocals = createBuffer(vocal_stem, channel0.length, channel1.length)
+    let target = createBuffer(target_stem, channel0.length, channel1.length)
     let back = createBuffer(back_stem, channel0.length, channel1.length)
 
-    let buff_vocals = createWave(vocals, "vocals.wav")
+    let buff_target = createWave(target, target_name + ".wav")
     let buff_back = createWave(back, "accompaniment.wav")
 
     //saveFile(buff_back, "Example.wav");
     return {
         stems:[
             {
-                name:"vocals",
-                data:buff_vocals
+                name:target_name,
+                data:buff_target
             },
             {
                 name:"accompaniment",
